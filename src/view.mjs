@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.6+2026.11.09";
+export const BUILD = "pit-1.0.7+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -483,7 +483,10 @@ export function renderUser(item, ctx) {
     body.push(id(n("row", { gap: "sm", align: "start" }, imgs), `${item.id}.imgs`));
   }
   body.push(id(n("md", { text: item.text || "" }), `${item.id}.md`));
-  const meta = id(n("row", { gap: "xs", align: "center", justify: "end" }, [
+  // Keep the turn meta outside the bubble, as omp does. If the copy/time row is
+  // inside the card, its minimum width stretches a short prompt into a much
+  // wider bubble than the native surface.
+  const meta = id(n("row", { role: "pit.usermeta", gap: "xs", align: "center", justify: "end" }, [
     id(n("icon", {
       name: "copy",
       title: "Copy message",
@@ -492,10 +495,13 @@ export function renderUser(item, ctx) {
       actions: { click: "copy-message" },
     }), `${item.id}.copy`),
     id(n("text", { spans: [{ t: clock(item.at), s: "dim" }] }), `${item.id}.time`),
-  ]), `${item.id}.head`);
-  return id(n("row", { gap: "none", align: "end" }, [
-    id(n("spacer", { grow: 1 }), `${item.id}.sp`),
-    id(n("card", { role: "pit.user", tone: "user", basis: "content", grow: 0, max: { w: "82ch" }, inset: true }, [...body, meta]), `${item.id}.card`),
+  ]), `${item.id}.meta`);
+  return id(n("col", { role: "pit.usercol", gap: "none" }, [
+    id(n("row", { gap: "none", align: "end" }, [
+      id(n("spacer", { grow: 1 }), `${item.id}.sp`),
+      id(n("card", { role: "pit.user", tone: "user", basis: "content", grow: 0, max: { w: "82ch" }, inset: true }, body), `${item.id}.card`),
+    ]), `${item.id}.row`),
+    meta,
   ]), item.id);
 }
 
@@ -748,6 +754,7 @@ export function renderPicker(ctx) {
   if (picker.kind === "resume") {
     const pinned = picker.pinned?.has?.(picker.selected);
     actions.push({ id: "pin", label: pinned ? "Unpin" : "Pin", keys: ["ctrl", "k"] });
+    actions.push({ id: "rename-picked", label: "Rename", keys: ["ctrl", "r"] });
     actions.push({ id: "delete", label: "Delete", keys: ["ctrl", "d"], danger: true });
   }
   return id(n("picker", {
@@ -756,6 +763,7 @@ export function renderPicker(ctx) {
     title: picker.title ? spans(picker.title) : undefined,
     subtitle: picker.subtitle ? spans(picker.subtitle) : undefined,
     icon: picker.icon || "sparkles",
+    layout: picker.layout || "rows",
     items: picker.items,
     selected: picker.selected,
     current: picker.current || [],
@@ -771,14 +779,43 @@ export function renderLayer(conv, ctx) {
   const picker = renderPicker(ctx);
   const approval = renderApproval(conv, ctx);
   const transcript = renderAgentModal(ctx);
+  const field = renderFieldDialog(ctx);
   if (picker) children.push(picker);
   if (approval) children.push(approval);
   if (transcript) children.push(transcript);
+  if (field) children.push(field);
   for (const toast of ctx.toasts || []) {
     children.push(id(n("toast", { text: toast.text, ttl: 3600, tone: toast.tone === "error" ? "error" : toast.tone === "warning" ? "warning" : "info" }), toast.id));
   }
   const hidden = children.length === 0;
   return id(n("col", { gap: "none", hidden }, children), "layer");
+}
+
+export function renderFieldDialog(ctx) {
+  const dialog = ctx.fieldDialog;
+  if (!dialog) return null;
+  const placeholder = [dialog.placeholder || "Type a value…"];
+  const field = dialog.method === "editor"
+    ? id(n("editor", { text: dialog.text || "", placeholder, readonly: true, maxLines: 14 }), "field.input")
+    : id(n("input", { text: dialog.text || "", placeholder, readonly: true, clear: true }), "field.input");
+  const body = [
+    id(n("text", { spans: [{ t: dialog.message || "pi needs a value to continue.", s: "muted" }] }), "field.message"),
+    field,
+    id(n("row", { gap: "xs", justify: "end" }, [
+      id(n("row", { role: "pit.chip", gap: "xs", align: "center", actions: { click: "field-cancel" } }, [
+        id(n("icon", { name: "x" }), "field.cancel.ic"),
+        id(n("text", { spans: [{ t: "Cancel", s: "muted" }] }), "field.cancel.t"),
+      ]), "field.cancel"),
+      id(n("row", { role: "pit.chip", gap: "xs", align: "center", actions: { click: "field-submit" } }, [
+        id(n("icon", { name: "check" }), "field.ok.ic"),
+        id(n("text", { spans: [{ t: "Continue", s: "accent" }] }), "field.ok.t"),
+      ]), "field.ok"),
+    ]), "field.actions"),
+  ];
+  return id(n("overlay", {
+    anchor: "center", modal: true, size: "md",
+    head: spans(dialog.title || "Input"), icon: "edit",
+  }, [id(n("col", { role: "pit.fielddialog", gap: "sm" }, body), "field.body")]), "fielddialog");
 }
 
 export function renderAgentModal(ctx) {
@@ -1064,6 +1101,18 @@ export const STYLESHEET = `
   box-shadow:none!important;padding:10px 14px}
 [data-role="pit.user"] [data-role="pit.user.head"], [data-role="pit.user"] .sf-row{justify-content:flex-end}
 [data-role="pit.answer"]{padding:2px 0}
+[data-role="pit.answer"] .sf-md, [data-role="pit.answer"] .md,
+[data-role="pit.user"] .sf-md, [data-role="pit.user"] .md,
+[data-role="pit.custom"] .sf-md, [data-role="pit.hook"] .sf-md{
+  font-family:Geist,system-ui,"SF Pro Text",system-ui,sans-serif!important;
+  font-size:14px!important;line-height:1.5!important;letter-spacing:0!important}
+[data-role="pit.answer"] .md code, [data-role="pit.answer"] .md pre,
+[data-role="pit.user"] .md code, [data-role="pit.user"] .md pre{
+  font-family:"SF Mono","Berkeley Mono",monospace!important;font-size:13px!important}
+[data-role="pit.user"]{padding:0!important}
+[data-role="pit.user"] .sf-card-body{padding:10px 16px!important}
+[data-role="pit.usermeta"]{padding:2px 2px 0 0}
+[data-role="pit.usermeta"] .sf-text{font-size:11px!important}
 [data-role="pit.thinking"]{opacity:.85;border-left:2px solid rgba(124,92,255,.32);padding-left:10px}
 [data-role="pit.compaction"], [data-role="pit.branch"]{opacity:.92;padding:2px 0}
 [data-role="pit.custom"], [data-role="pit.hook"]{border-left:3px solid rgba(34,211,238,.4)!important}
@@ -1100,6 +1149,7 @@ export const STYLESHEET = `
 [data-role="pit.plan"]{border-left:3px solid #22D3EE!important}
 [data-role="pit.approval"]{min-width:340px}
 [data-role="pit.agentmodal"]{max-height:60vh;overflow:auto;min-width:420px}
+[data-role="pit.fielddialog"]{min-width:440px;max-width:560px}
 [data-role="pit.error"]{border-color:rgba(225,29,72,.35)!important}
 .sf-row[data-role="pit.menuitem"]{flex-wrap:nowrap}
 @media (prefers-reduced-motion: reduce){

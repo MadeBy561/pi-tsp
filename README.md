@@ -64,15 +64,17 @@ stock `pi` with the original arguments.
 | Read grouping | Consecutive reads collapse into one expandable card |
 | Executions | Bash and Python/eval rows with output and exit status |
 | Thinking | A collapsible reasoning row when the model emits it |
+| Shell | `!command` runs through pi and adds output to context; `!!command` keeps it out |
+| Extension UI | Native `input` and `editor` dialogs, plus select/confirm approvals and status notices |
 | Subagents | Agent, model, tools, tokens, elapsed time and a full transcript modal |
 | Custom messages | Extension and hook messages, plus compaction and branch summaries |
 | Todos | A native checklist board, progress and a composer chip |
 | Approvals | Permission sheets with allow/deny, forwarded to the real pi permission flow |
 | Plan mode | A native checklist and an Implement action |
 | Pickers | Model and thinking-effort pickers that call pi's RPC state, not a fake label |
-| Composer | Centered card, context meter, model/effort chips, working directory, attachments, queued-message chips and send button |
-| Commands | `/clear`, `/resume`, `/model`, `/effort`, `/plan`, `/implement`, `/agents`, `/todos`, `/rename`, `/tree`, `/fork`, `/copy`, `/attach`, `/compact`, `/help`, `/quit` |
-| Sessions | Resume with transcript preview; pin sessions, delete with confirmation, and protect the open session |
+| Composer | Centered card, context meter, model/effort chips, working directory, attachments, queued-message chips, `!` shell mode and send button |
+| Commands | `/clear`, `/resume`, `/model`, `/effort`, `/plan`, `/implement`, `/agents`, `/todos`, `/rename`, `/name`, `/new`, `/clone`, `/session`, `/thinking`, `/tree`, `/fork`, `/copy`, `/attach`, `/export`, `/import`, `/hotkeys`, `/settings`, `/scoped-models`, `/reload`, `/changelog`, `/compact`, `/help`, `/quit` |
+| Sessions | Resume with preview, pin, rename, delete with confirmation, clone, import/export and tree/fork navigation |
 | Copy | Copy a message/answer, a code block, or choose from a preview picker |
 | Images | `/attach <path>` queues a png/jpg/gif/webp for the next prompt |
 | Fallback | Outside Tern, `-p`, `--version` or a non-text mode runs stock `pi` |
@@ -116,8 +118,8 @@ pi-tsp
 Or install a release tarball:
 
 ```sh
-gh release download v1.0.6 --repo MadeBy561/pi-tsp --pattern '*.tgz'
-npm install -g ./pi-tsp-1.0.6.tgz
+gh release download v1.0.7 --repo MadeBy561/pi-tsp --pattern '*.tgz'
+npm install -g ./pi-tsp-1.0.7.tgz
 pi-tsp
 ```
 

@@ -3,6 +3,28 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.7] - 2026-11-09
+
+### Added
+
+- Native shell commands: `!command` adds output to context and `!!command`
+  omits it.
+- pi RPC extension dialogs for `input` and `editor`, with a native Tern modal
+  and keyboard handling.
+- Session commands `/new`, `/clone`, `/session`, `/name`, `/thinking`,
+  `/export`, `/import`, `/hotkeys`, `/scoped-models`, `/settings`, `/reload`
+  and `/changelog`.
+- `Ctrl+L` model picker, `Ctrl+R` rename, `Ctrl+X` copy last answer,
+  `Shift+Tab` thinking cycle and `Ctrl+D` exit.
+- Native extension, skill, prompt-template, theme, tool and context-file flags
+  are passed through to pi.
+
+### Changed
+
+- User bubbles now use OMP's 14px Geist typography and keep copy/time meta
+  outside the bubble. At the same prompt the bubble is 174 x 41px, versus
+  237 x 80px before.
+
 ## [1.0.6] - 2026-11-09
 
 ### Changed

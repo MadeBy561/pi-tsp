@@ -126,6 +126,7 @@ export class Conversation {
     this.plan = null;
     this.todos = null;
     this.queue = { steering: [], followUp: [] };
+    this.shellLocal = null;
     this.approval = null;
     this.compacting = false;
     this.retry = null;
@@ -516,6 +517,17 @@ export class Conversation {
     const kind = message.role === "pythonExecution" ? "python" : "bash";
     const code = kind === "python" ? message.code || "" : message.command || "";
     const output = message.output || "";
+    const local = this.shellLocal;
+    if (local && local.text === code) {
+      local.output = output;
+      local.exitCode = message.exitCode;
+      local.cancelled = message.cancelled;
+      local.truncated = message.truncated;
+      local.status = message.cancelled || (message.exitCode != null && message.exitCode !== 0) ? "error" : "done";
+      this.shellLocal = null;
+      this.touch();
+      return;
+    }
     const key = `${kind}:${message.timestamp || 0}:${code.slice(0, 80)}:${output.slice(-80)}`;
     if (this.byKey.has(key)) return;
     this.add({

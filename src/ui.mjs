@@ -44,6 +44,7 @@ export class PiTsp {
     this.doc = new SurfaceDoc(this.link, SURFACE, Number(hello.credits) || 2);
     this.conv = new Conversation();
     this.composer = new Composer();
+    this.fieldInput = new Composer();
     this.inbound = new TspInbound();
     this.dirty = false;
     this.renderTimer = null;
@@ -53,6 +54,7 @@ export class PiTsp {
     this.picker = null;
     this.approval = null;
     this.agentModal = null;
+    this.fieldDialog = null;
     this.pinned = new Set();
     this.toasts = [];
     this.menuSelected = 0;
@@ -151,7 +153,15 @@ export class PiTsp {
     const args = ["--mode", "rpc", "--session-dir", this.configDir];
     for (const path of this.extensionPaths()) args.push("--extension", path);
     // Interactive-only flags pi's RPC mode understands.
-    const pass = new Set(["--provider", "--model", "--thinking", "--session", "--name", "--models", "--no-session", "--continue", "--api-key"]);
+    const pass = new Set([
+      "--provider", "--model", "--thinking", "--session", "--name", "--models",
+      "--no-session", "--continue", "--api-key", "--fork", "--session-id",
+      "--extension", "--skill", "--prompt-template", "--theme", "--use-theme",
+      "--tools", "--exclude-tools", "--no-tools", "--no-builtin-tools", "--no-mcp",
+      "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes",
+      "--no-context-files", "--system-prompt", "--append-system-prompt",
+      "--approve", "--no-approve", "--offline", "--verbose", "--tui-mode",
+    ]);
     for (let index = 0; index < this.args.length; index += 1) {
       const arg = this.args[index];
       const [flag, inline] = arg.split("=");
@@ -256,7 +266,14 @@ export class PiTsp {
       this.schedule();
       return;
     }
-    if (method === "setTitle" || method === "setWidget" || method === "setEditorText") {
+    if (method === "setTitle" || method === "setWidget") {
+      return;
+    }
+    if (method === "setEditorText" || method === "set_editor_text") {
+      if (typeof request.text === "string") {
+        this.composer.set(request.text, request.text.length);
+        this.schedule();
+      }
       return;
     }
     if (method === "confirm" || method === "select") {
@@ -272,10 +289,16 @@ export class PiTsp {
       return;
     }
     if (method === "input" || method === "editor") {
-      // The dialog is available in pi, but this front end has no text prompt
-      // modal yet; answer cancelled rather than leave pi waiting.
-      this.rpc.respondExtensionUi(request.id, { cancelled: true });
-      this.toast(`${method} dialog is not supported in pi-tsp yet`, "warning");
+      this.fieldDialog = {
+        id: request.id,
+        method,
+        title: request.title || (method === "editor" ? "Edit text" : "Input"),
+        message: request.message || "",
+        text: method === "editor" ? (request.prefill || "") : "",
+        placeholder: request.placeholder || (method === "editor" ? "Edit text…" : "Type a value…"),
+      };
+      this.fieldInput.set(this.fieldDialog.text || "");
+      this.schedule();
       return;
     }
     // Unknown dialog method: cancel so the agent never hangs.
@@ -337,6 +360,11 @@ export class PiTsp {
       case "toggle":
         return;
       case "edit":
+        if (this.fieldDialog && String(event.id || "").startsWith("field.")) {
+          this.fieldDialog.text = String(this.fieldDialog.text || "").slice(0, event.from) + (event.text || "") + String(this.fieldDialog.text || "").slice(event.to);
+          this.schedule();
+          return;
+        }
         this.composer.set(
           this.composer.text.slice(0, event.from) + event.text + this.composer.text.slice(event.to),
           event.cursor,
@@ -344,6 +372,10 @@ export class PiTsp {
         this.schedule();
         return;
       case "send":
+        if (this.fieldDialog) {
+          this.submitField(event.text ?? this.fieldDialog.text);
+          return;
+        }
         this.submit(event.text || this.composer.text);
         return;
       case "undo":
@@ -355,6 +387,20 @@ export class PiTsp {
 
   onKeys(data) {
     if (this.killed) return;
+    if (this.fieldDialog) {
+      const field = this.fieldInput.feed(data);
+      this.fieldDialog.text = this.fieldInput.text;
+      if (field.submit != null) {
+        this.submitField(field.submit);
+        return;
+      }
+      if (field.escape) {
+        this.cancelField();
+        return;
+      }
+      if (field.changed) this.schedule();
+      return;
+    }
     if (String(data) === "\x0f") {
       this.expandAll = !this.expandAll;
       this.schedule();
@@ -369,8 +415,35 @@ export class PiTsp {
       this.cycleModel();
       return;
     }
+    if (String(data) === "\x0c") {
+      this.openModelPicker();
+      return;
+    }
+    if (String(data) === "\x12") {
+      if (this.picker?.kind === "resume") {
+        const target = this.picker.sessions?.find((entry) => entry.id === this.picker.selected);
+        this.openRenameDialog(target || null);
+      } else {
+        this.openRenameDialog();
+      }
+      return;
+    }
+    if (String(data) === "\x18") {
+      this.copyLastAnswer();
+      return;
+    }
+    if (String(data) === "\x1b[Z") {
+      const levels = this.levels;
+      const index = Math.max(0, levels.indexOf(this.conv.thinkingLevel || this.effort));
+      this.setEffort(levels[(index + 1) % levels.length]);
+      return;
+    }
     if (this.picker?.kind === "resume" && String(data) === "\x04") {
       this.armDeleteSession();
+      return;
+    }
+    if (String(data) === "\x04" && !this.composer.text && !this.conv.busy && !this.picker && !this.approval && !this.fieldDialog) {
+      this.shutdown("Ctrl+D");
       return;
     }
     const result = this.composer.feed(data);
@@ -453,6 +526,14 @@ export class PiTsp {
   }
 
   onAction(act, nodeId, value, event) {
+    if (act === "field-submit") {
+      this.submitField(this.fieldDialog?.text || "");
+      return;
+    }
+    if (act === "field-cancel") {
+      this.cancelField();
+      return;
+    }
     if (act === "send") {
       this.submit(this.composer.text);
       return;
@@ -463,6 +544,11 @@ export class PiTsp {
     }
     if (act === "pin") {
       this.togglePin();
+      return;
+    }
+    if (act === "rename-picked") {
+      const target = this.picker?.sessions?.find((entry) => entry.id === this.picker.selected);
+      this.openRenameDialog(target || null);
       return;
     }
     if (act === "fork") {
@@ -586,6 +672,12 @@ export class PiTsp {
   }
 
   onChange(event) {
+    if (this.fieldDialog && String(event.id || "").startsWith("field.")) {
+      const value = event.text ?? event.value;
+      if (typeof value === "string") this.fieldDialog.text = value;
+      this.schedule();
+      return;
+    }
     if (this.picker && event.id === "picker.node" && event.value) {
       this.picker.selected = String(event.value);
       this.schedule();
@@ -621,6 +713,18 @@ export class PiTsp {
       { name: "agents", description: "List subagents and transcripts", source: "pi-tsp" },
       { name: "todos", description: "Show the current todo board", source: "pi-tsp" },
       { name: "rename", description: "Name this session: /rename <name>", source: "pi-tsp" },
+      { name: "name", description: "Alias for /rename", source: "pi-tsp" },
+      { name: "new", description: "Start a fresh session", source: "pi-tsp" },
+      { name: "clone", description: "Duplicate this session at its current position", source: "pi-tsp" },
+      { name: "session", description: "Show session statistics", source: "pi-tsp" },
+      { name: "thinking", description: "Set thinking level", source: "pi-tsp" },
+      { name: "export", description: "Export this session as HTML", source: "pi-tsp" },
+      { name: "import", description: "Import a JSONL session: /import <path>", source: "pi-tsp" },
+      { name: "hotkeys", description: "Show keyboard shortcuts", source: "pi-tsp" },
+      { name: "settings", description: "Show available pi settings commands", source: "pi-tsp" },
+      { name: "scoped-models", description: "Choose the model for Ctrl+P cycling", source: "pi-tsp" },
+      { name: "reload", description: "Reload instructions, extensions and themes", source: "pi-tsp" },
+      { name: "changelog", description: "Show the pi-tsp build version", source: "pi-tsp" },
       { name: "tree", description: "Browse the session tree and fork", source: "pi-tsp" },
       { name: "fork", description: "Fork from an earlier message", source: "pi-tsp" },
       { name: "copy", description: "Copy a message or answer", source: "pi-tsp" },
@@ -649,7 +753,7 @@ export class PiTsp {
     this.menuSelected = 0;
     const command = this.allCommands().find((entry) => entry.name === name);
     if (!command) return;
-    if (["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "rename", "tree", "fork", "copy", "attach", "compact", "help", "quit"].includes(name)) {
+    if (["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"].includes(name)) {
       this.localCommand(name, "");
     } else {
       this.prompt(`/${name}`);
@@ -686,7 +790,42 @@ export class PiTsp {
         this.showTodos();
         return;
       case "rename":
+      case "name":
         this.renameSession(arg);
+        return;
+      case "new":
+        this.clearSession();
+        return;
+      case "clone":
+        this.cloneSession();
+        return;
+      case "session":
+        this.showSession();
+        return;
+      case "thinking":
+        if (arg) this.setEffort(arg);
+        else this.openEffortPicker();
+        return;
+      case "export":
+        this.exportSession(arg);
+        return;
+      case "import":
+        this.importSession(arg);
+        return;
+      case "hotkeys":
+        this.openHotkeysPicker();
+        return;
+      case "settings":
+        this.toast("pi settings are managed by the pi CLI; this surface exposes /model, /thinking and /effort.");
+        return;
+      case "scoped-models":
+        this.openModelPicker();
+        return;
+      case "reload":
+        this.toast("Restarting pi-tsp reloads extensions, skills, themes and instructions.");
+        return;
+      case "changelog":
+        this.toast(`pi-tsp ${BUILD} · https://github.com/MadeBy561/pi-tsp/releases`);
         return;
       case "tree":
       case "fork":
@@ -718,9 +857,13 @@ export class PiTsp {
     this.composer.push(text);
     this.composer.clear();
     this.menuSelected = 0;
+    if (text.startsWith("!")) {
+      this.runShell(text);
+      return;
+    }
     if (text.startsWith("/")) {
       const [word, ...rest] = text.slice(1).split(/\s+/);
-      const local = ["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "rename", "tree", "fork", "copy", "attach", "compact", "help", "quit"];
+      const local = ["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"];
       if (local.includes(word)) {
         this.localCommand(word, rest.join(" "));
         return;
@@ -728,6 +871,40 @@ export class PiTsp {
     }
     this.lastUserText = text;
     this.sendPrompt(text);
+  }
+
+  async runShell(raw) {
+    const excludeFromContext = raw.startsWith("!!");
+    const command = raw.slice(excludeFromContext ? 2 : 1).trim();
+    if (!command) {
+      this.toast("usage: !command or !!command");
+      return;
+    }
+    const item = {
+      kind: "bash",
+      id: `shlocal${Date.now()}`,
+      text: command,
+      output: "",
+      status: "running",
+      at: Date.now(),
+      excludeFromContext,
+    };
+    this.conv.shellLocal = item;
+    this.conv.add(item);
+    this.lastPrompt = raw;
+    this.schedule();
+    try {
+      const result = await this.rpc.command("bash", { command, excludeFromContext }, 600000);
+      item.output = result?.output || "";
+      item.exitCode = result?.exitCode;
+      item.cancelled = Boolean(result?.cancelled);
+      item.truncated = Boolean(result?.truncated);
+      item.status = item.cancelled || (item.exitCode != null && item.exitCode !== 0) ? "error" : "done";
+    } catch (error) {
+      item.status = "error";
+      item.output = error.message;
+    }
+    this.schedule();
   }
 
   sendPrompt(text, extraImages = null) {
@@ -787,6 +964,52 @@ export class PiTsp {
     this.schedule();
   }
 
+  submitField(value) {
+    const dialog = this.fieldDialog;
+    if (!dialog) return;
+    this.fieldDialog = null;
+    if (dialog.id) {
+      try { this.rpc.respondExtensionUi(dialog.id, { value: String(value ?? "") }); } catch { /* gone */ }
+    }
+    if (dialog.local === "rename") {
+      const name = String(value ?? "").trim();
+      if (name && dialog.renamePath && dialog.renamePath !== this.sessionFile) this.renamePickedSession(dialog.renamePath, name);
+      else this.renameSession(name);
+    }
+    this.schedule();
+  }
+
+  cancelField() {
+    const dialog = this.fieldDialog;
+    if (!dialog) return;
+    this.fieldDialog = null;
+    if (dialog.id) {
+      try { this.rpc.respondExtensionUi(dialog.id, { cancelled: true }); } catch { /* gone */ }
+    }
+    this.schedule();
+  }
+
+  openRenameDialog(target = null) {
+    this.fieldDialog = {
+      id: null,
+      method: "input",
+      local: "rename",
+      renamePath: target?.path || null,
+      title: "Rename session",
+      message: target ? "Name the selected session." : "Give this session a recognizable name.",
+      text: target?.title || this.conv.sessionName || "",
+      placeholder: "Session name",
+    };
+    this.fieldInput.set(this.fieldDialog.text || "");
+    this.schedule();
+  }
+
+  copyLastAnswer() {
+    const item = [...this.conv.items].reverse().find((entry) => entry.kind === "assistant" && String(entry.text || "").trim());
+    if (item) this.copyText(item.text);
+    else this.toast("No assistant answer to copy", "warning");
+  }
+
   copyText(text) {
     const value = String(text || "");
     if (!value.trim()) {
@@ -834,7 +1057,7 @@ export class PiTsp {
       const data = await this.rpc.command("get_tree", {}, 15000);
       this.trace(`TREE data ${JSON.stringify(data).slice(0, 120)}`);
       const entries = [];
-      const walk = (nodes) => {
+      const walk = (nodes, depth = 0) => {
         for (const node of nodes || []) {
           const entry = node?.entry;
           if (entry?.type === "message" && (entry.message?.role === "user" || entry.message?.role === "assistant")) {
@@ -843,10 +1066,11 @@ export class PiTsp {
               id: entry.id,
               text,
               role: entry.message.role,
+              depth,
               at: entry.message.timestamp || Date.now(),
             });
           }
-          walk(node?.children);
+          walk(node?.children, depth + 1);
         }
       };
       walk(data.tree);
@@ -860,6 +1084,7 @@ export class PiTsp {
         title: "Fork from a message",
         subtitle: `${entries.length} messages · choose a branch point`,
         icon: "branch",
+        layout: "tree",
         selected: data.leafId || entries[entries.length - 1].id,
         items: entries.map((entry) => ({
           id: entry.id,
@@ -867,6 +1092,7 @@ export class PiTsp {
           detail: `${entry.role === "user" ? "You" : "pi"} · new branch`,
           icon: entry.role === "user" ? "user" : "message",
           dot: entry.role === "assistant" ? "success" : "muted",
+          depth: entry.depth || 0,
         })),
         entries,
       };
@@ -916,6 +1142,99 @@ export class PiTsp {
       })),
     };
     this.schedule();
+  }
+
+  async refreshCurrent() {
+    const messages = await this.rpc.command("get_messages", {}, 20000);
+    this.conv.loadMessages(messages.messages || []);
+    const state = await this.rpc.command("get_state", {}, 10000);
+    this.applyState(state);
+    this.schedule();
+  }
+
+  async cloneSession() {
+    try {
+      const result = await this.rpc.command("clone", {}, 30000);
+      if (result?.cancelled) {
+        this.toast("Clone cancelled", "warning");
+        return;
+      }
+      await this.refreshCurrent();
+      this.toast("Session cloned");
+    } catch (error) {
+      this.toast(`clone failed: ${error.message}`, "error");
+    }
+  }
+
+  async showSession() {
+    try {
+      const stats = await this.rpc.command("get_session_stats", {}, 10000);
+      const name = this.conv.sessionName || "(unnamed)";
+      const messages = stats.totalMessages ?? this.conv.items.length;
+      const tokens = stats.tokens?.total ?? this.conv.usage.total ?? 0;
+      const cost = Number(stats.cost || 0).toFixed(2);
+      this.toast(`${name} · ${messages} messages · ${humanTokens(tokens)} tok · $${cost}`);
+    } catch (error) {
+      this.toast(`session stats failed: ${error.message}`, "error");
+    }
+  }
+
+  async exportSession(path) {
+    try {
+      const result = await this.rpc.command("export_html", path ? { outputPath: path } : {}, 120000);
+      this.toast(`Exported: ${result?.path || path || "session.html"}`);
+    } catch (error) {
+      this.toast(`export failed: ${error.message}`, "error");
+    }
+  }
+
+  async importSession(path) {
+    if (!path) {
+      this.toast("usage: /import <session.jsonl>");
+      return;
+    }
+    try {
+      await this.rpc.command("switch_session", { sessionPath: path }, 25000);
+      await this.refreshCurrent();
+      this.toast("Session imported");
+    } catch (error) {
+      this.toast(`import failed: ${error.message}`, "error");
+    }
+  }
+
+  openHotkeysPicker() {
+    this.picker = {
+      kind: "info",
+      title: "Keyboard shortcuts",
+      subtitle: "Vanilla pi controls supported by pi-tsp",
+      items: [
+        { id: "ctrl-o", label: "Ctrl+O", detail: "expand/collapse tools and summaries" },
+        { id: "ctrl-t", label: "Ctrl+T", detail: "show/hide thinking" },
+        { id: "ctrl-p", label: "Ctrl+P", detail: "cycle model" },
+        { id: "ctrl-l", label: "Ctrl+L", detail: "open model picker" },
+        { id: "ctrl-r", label: "Ctrl+R", detail: "rename current session" },
+        { id: "ctrl-x", label: "Ctrl+X", detail: "copy last assistant answer" },
+        { id: "shift-tab", label: "Shift+Tab", detail: "cycle thinking level" },
+        { id: "ctrl-d", label: "Ctrl+D", detail: "delete selected session in /resume" },
+        { id: "enter", label: "Enter", detail: "send or confirm" },
+        { id: "escape", label: "Escape", detail: "cancel or abort" },
+      ],
+    };
+    this.schedule();
+  }
+
+  async renamePickedSession(path, name) {
+    const current = this.sessionFile;
+    try {
+      await this.rpc.command("switch_session", { sessionPath: path }, 25000);
+      await this.rpc.command("set_session_name", { name }, 10000);
+      if (current && current !== path) await this.rpc.command("switch_session", { sessionPath: current }, 25000);
+      await this.refreshCurrent();
+      this.picker = null;
+      this.toast(`Session renamed: ${name}`);
+    } catch (error) {
+      this.toast(`rename failed: ${error.message}`, "error");
+    }
   }
 
   async renameSession(name) {
@@ -1479,6 +1798,7 @@ export class PiTsp {
       picker: this.picker,
       approval: this.approval,
       agentModal: this.agentModal,
+      fieldDialog: this.fieldDialog,
       toast: this.toasts.at(-1),
       blobFor: (data, mime) => this.blobFor(data, mime),
     };
