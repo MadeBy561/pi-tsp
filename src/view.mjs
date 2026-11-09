@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.18+2026.11.09";
+export const BUILD = "pit-1.0.19+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -329,7 +329,7 @@ export function renderAgent(item, ctx) {
       lines: 2,
     }), `${base}.recent`));
   }
-  children.push(id(n("row", { gap: "xs", align: "center", actions: { click: "agent-view" } }, [
+  children.push(id(n("row", { gap: "xs", align: "center", actions: { click: `agent-view:${item.id}` } }, [
     id(n("icon", { name: "expand" }), `${base}.view.ic`),
     id(n("text", { spans: [{ t: "View transcript", s: "muted" }] }), `${base}.view.t`),
   ]), `${base}.view`));
@@ -351,7 +351,7 @@ export function renderAgent(item, ctx) {
     depth: item.depth || 1,
     collapsible: true,
     collapsed: false,
-    actions: { click: "agent-view" },
+    actions: { click: `agent-view:${item.id}` },
     title: "Open the subagent transcript",
   }, children), item.id);
 }

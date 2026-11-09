@@ -292,7 +292,32 @@ export class PiTsp {
       this.schedule();
       return;
     }
-    if (method === "setTitle" || method === "setWidget") {
+    if (method === "setTitle") {
+      return;
+    }
+    if (method === "setWidget") {
+      if (request.widgetKey === "subagent-async" && Array.isArray(request.widgetLines)) {
+        const line = request.widgetLines.find((entry) => String(entry).startsWith("PI_SUBAGENT_ASYNC_JSON:"));
+        if (line) {
+          try {
+            const snapshot = JSON.parse(String(line).slice("PI_SUBAGENT_ASYNC_JSON:".length));
+            this.conv.applySubagentSnapshot(snapshot);
+            // Materialize transcript paths for cards whose async status
+            // artifacts are already available.
+            for (const item of this.conv.items.filter((entry) => entry.kind === "agent")) {
+              if (!item.transcriptPath) this.resolveAsyncTranscript(item);
+            }
+            this.schedule();
+          } catch { /* a malformed host widget must not break the surface */ }
+        }
+      } else if (request.widgetKey === "subagent-inspect" && Array.isArray(request.widgetLines)) {
+        const line = request.widgetLines.find((entry) => String(entry).startsWith("PI_SUBAGENT_INSPECT_JSON:"));
+        if (line) {
+          try {
+            this.applyAgentInspect(JSON.parse(String(line).slice("PI_SUBAGENT_INSPECT_JSON:".length)));
+          } catch { /* malformed inspection reply */ }
+        }
+      }
       return;
     }
     if (method === "setEditorText" || method === "set_editor_text") {
@@ -1942,17 +1967,65 @@ export class PiTsp {
   openAgentModal(idOrPrefix) {
     const agent = this.conv.items.find((item) => item.kind === "agent" && (item.id === idOrPrefix || item.id.startsWith(idOrPrefix)));
     if (!agent) return;
-    this.agentModal = { item: agent, nodes: [], loading: true };
+    this.agentModal = {
+      item: agent,
+      agent: agent.agentType || "agent",
+      name: agent.name || "",
+      meta: [agent.agentStatus || agent.status, agent.model, agent.thinking].filter(Boolean).join(" · "),
+      nodes: [],
+      loading: true,
+    };
     this.loadAgentTranscript(agent);
     this.schedule();
   }
 
+  resolveAsyncTranscript(agent) {
+    if (!agent?.asyncDir) return "";
+    try {
+      const status = JSON.parse(readFileSync(join(agent.asyncDir, "status.json"), "utf8"));
+      const step = status.steps?.[0] || status.steps?.[agent.childIndex || 0];
+      const path = step?.transcriptPath || step?.sessionFile;
+      if (path) agent.transcriptPath = path;
+      return path || "";
+    } catch {
+      return "";
+    }
+  }
+
+  requestAgentInspect(agent) {
+    if (!agent?.asyncId) return;
+    const requestId = `tsp${Date.now().toString(36)}${Math.floor(Math.random() * 9999)}`;
+    this.agentInspect = { requestId, itemId: agent.id };
+    this.rpc.command("prompt", { message: `/subagents-inspect-rpc ${requestId} ${agent.asyncId} --lines 200` }, 15000)
+      .catch((error) => this.toast(`inspect failed: ${error.message}`, "error"));
+  }
+
+  applyAgentInspect(reply) {
+    if (!reply || reply.requestId !== this.agentInspect?.requestId) return;
+    const agent = this.conv.items.find((item) => item.id === this.agentInspect.itemId);
+    const nodes = [];
+    if (reply.error) nodes.push({ k: "text", p: { spans: [{ t: reply.error.message || reply.error.code || "inspection failed", s: "error" }] } });
+    if (reply.task) nodes.push({ k: "md", p: { text: `**Task**\n\n${reply.task}` } });
+    for (const message of reply.messages || []) {
+      const text = String(message.text || "").trim();
+      if (!text) continue;
+      if (message.role === "assistant" || message.kind === "text") nodes.push({ k: "md", p: { text } });
+      else if (message.role === "tool" || message.role === "toolResult") nodes.push({ k: "code", p: { text: text.slice(0, 4000), wrap: true } });
+      else nodes.push({ k: "md", p: { text: `**${message.role || message.kind}**\n\n${text}` } });
+    }
+    if (reply.finalOutput) nodes.push({ k: "md", p: { text: `**Final output**\n\n${reply.finalOutput}` } });
+    this.agentModal = { item: agent, agent: agent?.agentType || "agent", name: agent?.name || "", meta: `inspection · ${reply.status || "ready"}`, nodes, loading: false };
+    this.schedule();
+  }
+
   async loadAgentTranscript(agent) {
-    const path = agent.transcriptPath;
+    let path = agent.transcriptPath;
+    if (!path && agent.asyncDir) path = this.resolveAsyncTranscript(agent);
     if (!path || !existsSync(path)) {
-      this.agentModal.nodes = [spans("No transcript file for this subagent.", "muted")];
-      this.agentModal.loading = false;
+      this.agentModal.nodes = [{ k: "text", p: { spans: [{ t: "No transcript file yet; asking the subagent runtime…", s: "muted" }] } }];
+      this.agentModal.loading = true;
       this.schedule();
+      this.requestAgentInspect(agent);
       return;
     }
     try {
@@ -1966,7 +2039,7 @@ export class PiTsp {
       this.agentModal.nodes = this.transcriptNodes(records, agent);
       this.agentModal.loading = false;
     } catch (error) {
-      this.agentModal.nodes = [spans(`could not read transcript: ${error.message}`, "error")];
+      this.agentModal.nodes = [{ k: "text", p: { spans: [{ t: `could not read transcript: ${error.message}`, s: "error" }] } }];
       this.agentModal.loading = false;
     }
     this.schedule();
@@ -2036,7 +2109,7 @@ export class PiTsp {
         if (text) nodes.push({ id: `am.r${index++}`, k: "code", p: { text: text.slice(0, 4000), wrap: true } });
       }
     }
-    if (agent?.model) nodes.unshift({ id: "am.meta", k: "text", p: { spans: [{ t: `${agent.agentType || "agent"} · ${agent.model}${agent.thinking ? ` · ${agent.thinking}` : ""}`, s: "muted" }] } });
+    if (agent?.model) nodes.unshift({ id: "am.transcript.meta", k: "text", p: { spans: [{ t: `${agent.agentType || "agent"} · ${agent.model}${agent.thinking ? ` · ${agent.thinking}` : ""}`, s: "muted" }] } });
     return nodes;
   }
 

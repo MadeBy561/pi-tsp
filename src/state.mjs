@@ -643,6 +643,48 @@ export class Conversation {
     this.touch();
   }
 
+  applySubagentSnapshot(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.runs)) return;
+    for (const run of snapshot.runs) {
+      let item = this.items.find((entry) => entry.kind === "agent" && (
+        entry.asyncId === run.id || entry.runId === run.id ||
+        (run.toolCallId && entry.toolCallId === run.toolCallId)
+      ));
+      if (!item) {
+        item = this.add({
+          kind: "agent",
+          id: nextId("a"),
+          asyncId: run.id,
+          agentType: run.label || "agent",
+          name: run.label || "Subagent",
+          agentStatus: "running",
+          stats: { tools: 0, tokens: 0 },
+          at: run.startedAt || Date.now(),
+        });
+      }
+      item.asyncId = run.id;
+      item.runId = run.id;
+      item.agentType = run.label || item.agentType || "agent";
+      item.name = item.name || run.label || "Subagent";
+      const state = String(run.state || "running").toLowerCase();
+      const terminal = state === "complete" || state === "completed";
+      const failed = state === "failed" || state === "error" || state === "cancelled";
+      item.agentStatus = terminal ? "done" : failed ? "failed" : state === "stopped" ? "stopped" : "running";
+      if (run.startedAt) item.startedAt = run.startedAt;
+      if (run.endedAt) item.endedAt = run.endedAt;
+      const activity = run.activity || {};
+      item.stats = {
+        ...(item.stats || {}),
+        tools: activity.toolCount ?? item.stats?.tools ?? 0,
+        tokens: item.stats?.tokens ?? 0,
+        ...(run.endedAt && item.startedAt ? { took: Math.max(0, run.endedAt - item.startedAt) } : {}),
+      };
+      if (run.children) item.children = run.children;
+      if (terminal && item.startedAt && item.endedAt) item.stats.took = item.endedAt - item.startedAt;
+    }
+    this.touch();
+  }
+
   promoteAgent(item) {
     if (item.kind === "agent") return;
     item.kind = "agent";
@@ -689,9 +731,13 @@ export class Conversation {
     }
     if (result?.transcriptPath) item.transcriptPath = result.transcriptPath;
     if (result?.artifactPaths?.transcriptPath) item.transcriptPath = result.artifactPaths.transcriptPath;
+    if (result?.asyncId) item.asyncId = result.asyncId;
+    if (result?.asyncDir) item.asyncDir = result.asyncDir;
+    if (result?.runId) item.runId = result.runId;
     if (result?.finalOutput) item.output = result.finalOutput;
     if (final) {
-      item.agentStatus = item.isError || (result?.exitCode != null && result.exitCode !== 0) ? "failed" : "done";
+      const detached = Boolean(result?.asyncId && !(details?.results?.length));
+      item.agentStatus = detached ? "running" : item.isError || (result?.exitCode != null && result.exitCode !== 0) ? "failed" : "done";
       item.endedAt = Date.now();
       if (item.startedAt) item.stats = { ...(item.stats || {}), took: item.endedAt - item.startedAt };
       if (!item.output && text) item.output = text;

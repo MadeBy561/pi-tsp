@@ -3,6 +3,21 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.19] - 2026-11-09
+
+### Fixed
+
+- Subagent cards now consume pi-subagents' `subagent-async` widget snapshots:
+  queued, running, complete and failed states update in place instead of
+  staying detached.
+- Async child transcript paths are resolved from the run's `status.json`.
+- View transcript opens with valid TSP nodes; fixed the duplicate `am.meta`
+  node id and populated the header/task/output.
+- `/subagents-inspect-rpc` replies are handled as a fallback when a transcript
+  artifact is not available yet.
+- The View transcript action carries the exact agent id instead of relying on
+  the clicked child node's id.
+
 ## [1.0.18] - 2026-11-09
 
 ### Fixed
