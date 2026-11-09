@@ -3,6 +3,17 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.22] - 2026-11-09
+
+### Changed
+
+- The transcript now shares the composer's centered 96ch column, with
+  consistent left/right margins and scrollbar clearance.
+- Added breathing room above the brand row and below the last message.
+- Markdown paragraphs and headings have a cleaner vertical rhythm.
+- Ordered and unordered lists use a real hanging indent; two-digit markers
+  such as `10.` are no longer clipped.
+
 ## [1.0.21] - 2026-11-09
 
 ### Fixed

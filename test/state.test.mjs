@@ -73,6 +73,7 @@ test("buildView renders a todo board without throwing", () => {
     composer: { text: "", cursor: 0 },
     kinds: new Set(["checklist"]),
   });
-  const stream = view.main[0].k === "scroll" ? view.main[0].c[0] : view.main[0];
+  const root = view.main[0];
+  const stream = root.c?.find((node) => node.p?.role === "pit.stream") || root.c?.[0] || root;
   assert.ok(stream.c.length >= 2);
 });

@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.21+2026.11.09";
+export const BUILD = "pit-1.0.22+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -1049,7 +1049,9 @@ export function buildView(conv, ctx) {
   // omp's welcome lockup retires into transcript history instead of vanishing
   // on the first prompt. Keep a compact brand row at the top of an active
   // transcript for the same continuity.
-  const transcript = empty ? [splash(conv, ctx)] : [brandBar(conv, ctx), ...renderTranscript(conv, ctx)];
+  const transcript = empty
+    ? [splash(conv, ctx)]
+    : [id(n("spacer", { size: "sm" }), "stream.top"), brandBar(conv, ctx), ...renderTranscript(conv, ctx)];
   const plan = renderPlan(conv, ctx);
   if (plan) transcript.push(plan);
   const todos = renderTodos(conv, ctx);
@@ -1067,17 +1069,37 @@ export function buildView(conv, ctx) {
       ]), "err.retry"),
     ]), "error"));
   }
+  transcript.push(id(n("spacer", { size: "md" }), "stream.bottom"));
   const tail = id(n("spacer", { size: "none" }), "tail");
   transcript.push(tail);
   return {
-    main: [id(n("col", { gap: "lg", role: "pit.stream" }, transcript), "main")],
+    // Tern flattens a region's root node, so its role never reaches the DOM.
+    // Keep an inner role-bearing column for the centered transcript column.
+    main: [id(n("col", { gap: "lg" }, [
+      id(n("row", { gap: "none", align: "start" }, [
+        id(n("spacer", { grow: 1 }), "stream.sp1"),
+        id(n("col", { gap: "lg", role: "pit.stream", basis: 0.92, max: { w: "96ch" } }, transcript), "stream"),
+        id(n("spacer", { grow: 1 }), "stream.sp2"),
+      ]), "stream.row"),
+    ]), "main")],
     dock: [id(n("col", { gap: "sm" }, [composer(conv, ctx)]), "dock")],
     layer: [renderLayer(conv, ctx)],
   };
 }
 
 export const STYLESHEET = `
-.sf-region.sf-main [data-role="pit.stream"]{max-width:860px;margin:0 auto;padding:4px 2px 12px}
+[data-role="pit.stream"]{box-sizing:border-box}
+[data-role="pit.stream"] .sf-md p,[data-role="pit.stream"] .md p{margin:0 0 .68em}
+[data-role="pit.stream"] .sf-md p:last-child,[data-role="pit.stream"] .md p:last-child{margin-bottom:0}
+[data-role="pit.stream"] .sf-md ul,[data-role="pit.stream"] .sf-md ol,
+[data-role="pit.stream"] .md ul,[data-role="pit.stream"] .md ol{
+  padding-left:1.9em!important;padding-inline-start:1.9em!important;margin:.35em 0 .7em!important}
+[data-role="pit.stream"] .sf-md li,[data-role="pit.stream"] .md li{
+  padding-left:.15em;overflow:visible}
+[data-role="pit.stream"] .sf-md li::marker,[data-role="pit.stream"] .md li::marker{overflow:visible}
+[data-role="pit.stream"] .sf-md h1,[data-role="pit.stream"] .md h1{margin:.85em 0 .4em}
+[data-role="pit.stream"] .sf-md h2,[data-role="pit.stream"] .md h2,
+[data-role="pit.stream"] .sf-md h3,[data-role="pit.stream"] .md h3{margin:.75em 0 .3em}
 [data-role="pit.brandbar"]{padding:6px 4px 0;opacity:1}
 [data-role="pit.brandbar"] [data-role="pit.badge"]{width:26px;height:26px;border-radius:9px;font-size:16px}
 [data-role="pit.brandbar"] [data-role="pit.wordmark"]{font-size:1.05em;letter-spacing:-.02em}
