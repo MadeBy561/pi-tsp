@@ -61,6 +61,8 @@ export class PiTsp {
     this.statusExtras = new Map();
     this.models = [];
     this.levels = ["off", "low", "medium", "high", "max"];
+    this.expandAll = false;
+    this.hideThinking = false;
     this.commands = [];
     this.effort = "";
     this.lastUserText = "";
@@ -352,6 +354,20 @@ export class PiTsp {
 
   onKeys(data) {
     if (this.killed) return;
+    if (String(data) === "\x0f") {
+      this.expandAll = !this.expandAll;
+      this.schedule();
+      return;
+    }
+    if (String(data) === "\x14") {
+      this.hideThinking = !this.hideThinking;
+      this.schedule();
+      return;
+    }
+    if (String(data) === "\x10") {
+      this.cycleModel();
+      return;
+    }
     if (this.picker?.kind === "resume" && String(data) === "\x04") {
       this.armDeleteSession();
       return;
@@ -1097,6 +1113,13 @@ export class PiTsp {
     this.schedule();
   }
 
+  cycleModel() {
+    if (!this.models.length) return;
+    const index = this.models.findIndex((model) => model.id === this.conv.model && (!model.provider || model.provider === this.conv.provider));
+    const next = this.models[(Math.max(0, index) + 1) % this.models.length];
+    if (next) this.applyModel(next);
+  }
+
   setModelByQuery(query) {
     const needle = query.toLowerCase();
     const model = this.models.find((entry) => entry.id.toLowerCase().includes(needle) || (entry.name || "").toLowerCase().includes(needle));
@@ -1376,6 +1399,8 @@ export class PiTsp {
       tokPerSec: this.conv.busy ? this.conv.lastTokPerSec : this.conv.lastTokPerSec,
       turnMs: this.conv.lastTurnMs,
       turnTokens: this.conv.lastTurnTokens,
+      expandAll: this.expandAll,
+      hideThinking: this.hideThinking,
       toasts: this.toasts,
       statusExtra: [...this.statusExtras.values()].at(-1) || "",
       composer: this.composer,

@@ -261,7 +261,7 @@ export function renderTool(item, ctx) {
     status,
     frame: inline ? "inline" : "card",
     collapsible: true,
-    collapsed: inline,
+    collapsed: inline ? !ctx.expandAll : false,
     preview: inline ? { lines: 12 } : { lines: 24 },
     icon: TOOL_ICONS[name] || "tool",
     meta: toolMeta(item, hunks),
@@ -357,6 +357,7 @@ export function renderAgent(item, ctx) {
 }
 
 export function renderThinking(item, ctx) {
+  if (ctx.hideThinking) return null;
   const streaming = item.status === "running" || item.status === "streaming";
   const head = id(n("row", { gap: "xs", align: "center" }, [
     id(n("icon", { name: "thinking", tone: "muted" }), `${item.id}.ic`),
@@ -367,7 +368,7 @@ export function renderThinking(item, ctx) {
   return id(n("section", {
     role: "pit.thinking",
     collapsible: true,
-    collapsed: !streaming && (ctx.collapseThoughts ?? false),
+    collapsed: !streaming && !ctx.expandAll && (ctx.collapseThoughts ?? false),
     head: `${item.id}.head`,
   }, [head, id(n("md", { text: item.text || "", stream: streaming }), `${item.id}.body`)]), item.id);
 }
@@ -385,7 +386,7 @@ export function renderSummary(item, ctx) {
   return id(n("section", {
     role: isBranch ? "pit.branch" : "pit.compaction",
     collapsible: true,
-    collapsed: true,
+    collapsed: !ctx.expandAll,
     head: `${item.id}.head`,
   }, [
     head,

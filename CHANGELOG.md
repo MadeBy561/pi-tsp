@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-11-09
+
+### Added
+
+- OMP-style keyboard controls: `Ctrl+O` expands/collapses tool and summary
+  output, `Ctrl+T` hides/shows thinking, and `Ctrl+P` cycles models.
+
 ## [1.0.2] - 2026-11-09
 
 ### Added
