@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.6] - 2026-11-09
+
+### Changed
+
+- Updated the README launch and transcript screenshots from the current build and
+  bumped the visible build marker to 1.0.6.
+
 ## [1.0.5] - 2026-11-09
 
 ### Added
