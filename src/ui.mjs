@@ -615,6 +615,7 @@ export class PiTsp {
       { name: "implement", description: "Execute the current plan", source: "pi-tsp" },
       { name: "agents", description: "List subagents and transcripts", source: "pi-tsp" },
       { name: "todos", description: "Show the current todo board", source: "pi-tsp" },
+      { name: "rename", description: "Name this session: /rename <name>", source: "pi-tsp" },
       { name: "tree", description: "Browse the session tree and fork", source: "pi-tsp" },
       { name: "fork", description: "Fork from an earlier message", source: "pi-tsp" },
       { name: "copy", description: "Copy a message or answer", source: "pi-tsp" },
@@ -643,7 +644,7 @@ export class PiTsp {
     this.menuSelected = 0;
     const command = this.allCommands().find((entry) => entry.name === name);
     if (!command) return;
-    if (["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "tree", "fork", "copy", "attach", "compact", "help", "quit"].includes(name)) {
+    if (["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "rename", "tree", "fork", "copy", "attach", "compact", "help", "quit"].includes(name)) {
       this.localCommand(name, "");
     } else {
       this.prompt(`/${name}`);
@@ -679,6 +680,9 @@ export class PiTsp {
       case "todos":
         this.showTodos();
         return;
+      case "rename":
+        this.renameSession(arg);
+        return;
       case "tree":
       case "fork":
         this.openForkPicker();
@@ -711,7 +715,7 @@ export class PiTsp {
     this.menuSelected = 0;
     if (text.startsWith("/")) {
       const [word, ...rest] = text.slice(1).split(/\s+/);
-      const local = ["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "tree", "fork", "copy", "attach", "compact", "help", "quit"];
+      const local = ["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "rename", "tree", "fork", "copy", "attach", "compact", "help", "quit"];
       if (local.includes(word)) {
         this.localCommand(word, rest.join(" "));
         return;
@@ -907,6 +911,21 @@ export class PiTsp {
       })),
     };
     this.schedule();
+  }
+
+  async renameSession(name) {
+    if (!name) {
+      this.toast("usage: /rename <session name>");
+      return;
+    }
+    try {
+      await this.rpc.command("set_session_name", { name }, 10000);
+      this.conv.sessionName = name;
+      this.toast(`Session renamed: ${name}`);
+      this.schedule();
+    } catch (error) {
+      this.toast(`rename failed: ${error.message}`, "error");
+    }
   }
 
   async editQueue() {

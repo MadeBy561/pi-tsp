@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.4] - 2026-11-09
+
+### Added
+
+- `/rename <name>` names the current pi session through the RPC
+  `set_session_name` command.
+
 ## [1.0.3] - 2026-11-09
 
 ### Added
