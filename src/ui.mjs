@@ -469,6 +469,10 @@ export class PiTsp {
       this.cycleModel();
       return;
     }
+    if (String(data) === "\x1b[70;6u" || String(data) === "\x1b[70;6~") {
+      this.openSearchPrompt();
+      return;
+    }
     if (String(data) === "\x0c") {
       this.openModelPicker();
       return;
@@ -780,6 +784,7 @@ export class PiTsp {
       { name: "export", description: "Export this session as HTML", source: "pi-tsp" },
       { name: "import", description: "Import a JSONL session: /import <path>", source: "pi-tsp" },
       { name: "hotkeys", description: "Show keyboard shortcuts", source: "pi-tsp" },
+      { name: "search", description: "Search the transcript: /search <text>", source: "pi-tsp" },
       { name: "settings", description: "Show available pi settings commands", source: "pi-tsp" },
       { name: "scoped-models", description: "Choose the model for Ctrl+P cycling", source: "pi-tsp" },
       { name: "reload", description: "Reload instructions, extensions and themes", source: "pi-tsp" },
@@ -812,7 +817,7 @@ export class PiTsp {
     this.menuSelected = 0;
     const command = this.allCommands().find((entry) => entry.name === name);
     if (!command) return;
-    if (["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"].includes(name)) {
+    if (["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "search", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"].includes(name)) {
       this.localCommand(name, "");
     } else {
       this.prompt(`/${name}`);
@@ -895,6 +900,9 @@ export class PiTsp {
       case "copy":
         this.openCopyPicker();
         return;
+      case "search":
+        this.openSearchPrompt(arg);
+        return;
       case "attach":
         this.attach(arg);
         return;
@@ -924,7 +932,7 @@ export class PiTsp {
     }
     if (text.startsWith("/")) {
       const [word, ...rest] = text.slice(1).split(/\s+/);
-      const local = ["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"];
+      const local = ["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "search", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"];
       if (local.includes(word)) {
         this.localCommand(word, rest.join(" "));
         return;
@@ -1046,6 +1054,7 @@ export class PiTsp {
     if (dialog.local === "tree-label" && dialog.labelEntry) {
       this.labelTreeEntry(dialog.labelEntry.id, String(value ?? ""));
     }
+    if (dialog.local === "search") this.openSearchPicker(String(value ?? ""));
     this.schedule();
   }
 
@@ -1093,6 +1102,58 @@ export class PiTsp {
     } catch (error) {
       this.toast(`copy failed: ${error.message}`, "error");
     }
+  }
+
+  openSearchPrompt(query = "") {
+    const value = String(query || "").trim();
+    if (value) {
+      this.openSearchPicker(value);
+      return;
+    }
+    this.fieldDialog = {
+      id: null,
+      method: "input",
+      local: "search",
+      title: "Search transcript",
+      message: "Find text in this session.",
+      text: "",
+      placeholder: "Search text…",
+    };
+    this.fieldInput.set("");
+    this.schedule();
+  }
+
+  openSearchPicker(query) {
+    const needle = String(query || "").toLowerCase();
+    const entries = this.conv.items
+      .filter((item) => ["user", "assistant", "tool", "agent", "custom", "hook", "bash", "python", "thinking", "compaction", "branch"].includes(item.kind) && String(item.text || item.output || "").trim())
+      .map((item) => ({
+        id: item.id,
+        text: String(item.text || item.output || ""),
+        kind: item.kind,
+      }))
+      .filter((item) => !needle || item.text.toLowerCase().includes(needle));
+    if (!entries.length) {
+      this.toast(`No matches for “${query}”`, "warning");
+      return;
+    }
+    this.picker = {
+      kind: "search",
+      title: "Search transcript",
+      subtitle: `${entries.length} match${entries.length === 1 ? "" : "es"} · ${query}`,
+      icon: "search",
+      selected: entries[0].id,
+      items: entries.map((entry) => ({
+        id: entry.id,
+        label: entry.text.replace(/\s+/g, " ").slice(0, 110),
+        detail: entry.kind,
+        icon: entry.kind === "user" ? "user" : entry.kind === "assistant" ? "message" : "search",
+        mono: true,
+      })),
+      texts: entries,
+      query,
+    };
+    this.schedule();
   }
 
   openCopyPicker() {
@@ -1650,7 +1711,7 @@ export class PiTsp {
       if (session) this.resumeSession(session.path);
     } else if (picker.kind === "agents") {
       this.openAgentModal(selected);
-    } else if (picker.kind === "copy") {
+    } else if (picker.kind === "copy" || picker.kind === "search") {
       const item = picker.texts?.find((entry) => entry.id === selected);
       if (item) this.copyText(item.text);
     } else if (picker.kind === "fork") {

@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.14+2026.11.09";
+export const BUILD = "pit-1.0.15+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -694,6 +694,14 @@ function pickerPreview(picker) {
       id(n("md", { text: clip(entry.text, 80, 12000) }), "picker.preview.md"),
     ];
   }
+  if (picker.kind === "search") {
+    const item = picker.texts?.find((entry) => entry.id === picker.selected);
+    if (!item) return [];
+    return [
+      id(n("text", { spans: [{ t: `${item.kind} · match`, s: "muted" }] }), "picker.preview.meta"),
+      id(n("md", { text: clip(item.text, 80, 12000) }), "picker.preview.md"),
+    ];
+  }
   if (picker.kind === "copy") {
     const item = picker.texts?.find((entry) => entry.id === picker.selected);
     if (!item?.text) return [];
@@ -720,7 +728,7 @@ export function renderPicker(ctx) {
   const preview = pickerPreview(picker);
   const actions = picker.kind === "help"
     ? [{ id: "close", label: "Close", primary: true }]
-    : [{ id: "choose", label: picker.kind === "tree" ? "Use prompt" : "Choose", primary: true }];
+    : [{ id: "choose", label: picker.kind === "tree" ? "Use prompt" : picker.kind === "search" ? "Copy match" : "Choose", primary: true }];
   if (picker.kind === "tree") {
     actions.push({ id: "tree-label", label: "Label", keys: ["shift", "l"] });
   }

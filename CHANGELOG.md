@@ -3,6 +3,15 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.15] - 2026-11-09
+
+### Added
+
+- `/search` transcript search with live match picker, preview and
+  `Copy match`; `Ctrl+Shift+F` opens the search prompt when the terminal
+  reports that sequence. Search covers user, assistant, tool, agent, bash,
+  python, thinking, compaction and branch entries.
+
 ## [1.0.14] - 2026-11-09
 
 ### Added
