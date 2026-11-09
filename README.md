@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/pi-tsp-1.0.25.png" alt="pi-tsp launch surface" width="100%">
+  <img src="docs/pi-tsp-turn-1.0.25.png" alt="pi-tsp active session" width="100%">
 </p>
 
 ---
@@ -45,17 +45,6 @@ owns the surface. Nothing in pi is patched, and outside Tern `pi-tsp` execs
 stock `pi` with the original arguments.
 
 ## What it does
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/pi-tsp-turn-1.0.25.png" alt="A conversation with a model, tool card and answer"></td>
-    <td width="50%"><img src="docs/pi-tsp-1.0.25.png" alt="The native launch state and composer"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub><b>Transcript</b> — user and assistant turns, tool cards, timing and token rate, with the model and effort chips in the composer.</sub></td>
-    <td align="center"><sub><b>Launch</b> — branded empty state, starter prompts, centered composer, context meter and the live working directory.</sub></td>
-  </tr>
-</table>
 
 | Surface | What you get |
 |---|---|
