@@ -3,6 +3,14 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.13] - 2026-11-09
+
+### Added
+
+- `/settings` now opens a native session settings picker with auto-compaction,
+  auto-retry, steering mode, follow-up mode and model/thinking shortcuts. The
+  first four map to the pi RPC settings commands.
+
 ## [1.0.12] - 2026-11-09
 
 ### Added

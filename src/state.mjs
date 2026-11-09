@@ -126,6 +126,10 @@ export class Conversation {
     this.sessionName = "";
     this.plan = null;
     this.todos = null;
+    this.autoCompaction = true;
+    this.autoRetry = true;
+    this.steeringMode = "one-at-a-time";
+    this.followUpMode = "one-at-a-time";
     this.queue = { steering: [], followUp: [] };
     this.shellLocal = null;
     this.approval = null;

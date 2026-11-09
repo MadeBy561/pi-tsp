@@ -232,6 +232,9 @@ export class PiTsp {
     }
     this.conv.thinkingLevel = state.thinkingLevel || this.conv.thinkingLevel;
     this.effort = this.conv.thinkingLevel;
+    if (typeof state.autoCompactionEnabled === "boolean") this.conv.autoCompaction = state.autoCompactionEnabled;
+    if (state.steeringMode) this.conv.steeringMode = state.steeringMode;
+    if (state.followUpMode) this.conv.followUpMode = state.followUpMode;
     this.conv.busy = Boolean(state.isStreaming);
     this.sessionFile = state.sessionFile || "";
     this.sessionId = state.sessionId || "";
@@ -867,7 +870,7 @@ export class PiTsp {
         this.openHotkeysPicker();
         return;
       case "settings":
-        this.toast("pi settings are managed by the pi CLI; this surface exposes /model, /thinking and /effort.");
+        this.openSettingsPicker();
         return;
       case "scoped-models":
         this.openModelPicker();
@@ -1471,6 +1474,58 @@ export class PiTsp {
     }
   }
 
+  openSettingsPicker() {
+    const onOff = (value) => (value ? "On" : "Off");
+    this.picker = {
+      kind: "settings",
+      title: "Settings",
+      subtitle: "pi session behavior",
+      icon: "gear",
+      selected: "auto-compaction",
+      items: [
+        { id: "auto-compaction", label: `Auto-compaction: ${onOff(this.conv.autoCompaction)}`, detail: "summarize when context is nearly full", icon: "compaction", dot: this.conv.autoCompaction ? "success" : "muted" },
+        { id: "auto-retry", label: `Auto-retry: ${onOff(this.conv.autoRetry)}`, detail: "retry transient provider errors", icon: "repeat", dot: this.conv.autoRetry ? "success" : "muted" },
+        { id: "steering-mode", label: `Steering: ${this.conv.steeringMode}`, detail: "delivery mode for steering messages", icon: "corner-down-right", dot: this.conv.steeringMode === "all" ? "success" : "muted" },
+        { id: "follow-up-mode", label: `Follow-up: ${this.conv.followUpMode}`, detail: "delivery mode for follow-up messages", icon: "corner-down-right", dot: this.conv.followUpMode === "all" ? "success" : "muted" },
+        { id: "model", label: "Model and thinking", detail: "use /model or /thinking", icon: "sparkles", dot: "muted" },
+      ],
+    };
+    this.schedule();
+  }
+
+  async openSettingsChoice(id) {
+    if (id === "model") {
+      this.openModelPicker();
+      return;
+    }
+    try {
+      if (id === "auto-compaction") {
+        const enabled = !this.conv.autoCompaction;
+        await this.rpc.command("set_auto_compaction", { enabled }, 15000);
+        this.conv.autoCompaction = enabled;
+        this.toast(`Auto-compaction: ${enabled ? "On" : "Off"}`);
+      } else if (id === "auto-retry") {
+        const enabled = !this.conv.autoRetry;
+        await this.rpc.command("set_auto_retry", { enabled }, 15000);
+        this.conv.autoRetry = enabled;
+        this.toast(`Auto-retry: ${enabled ? "On" : "Off"}`);
+      } else if (id === "steering-mode") {
+        const mode = this.conv.steeringMode === "all" ? "one-at-a-time" : "all";
+        await this.rpc.command("set_steering_mode", { mode }, 15000);
+        this.conv.steeringMode = mode;
+        this.toast(`Steering: ${mode}`);
+      } else if (id === "follow-up-mode") {
+        const mode = this.conv.followUpMode === "all" ? "one-at-a-time" : "all";
+        await this.rpc.command("set_follow_up_mode", { mode }, 15000);
+        this.conv.followUpMode = mode;
+        this.toast(`Follow-up: ${mode}`);
+      }
+      this.openSettingsPicker();
+    } catch (error) {
+      this.toast(`settings failed: ${error.message}`, "error");
+    }
+  }
+
   openModelPicker() {
     const models = this.models.map((model) => ({
       id: `${model.provider}/${model.id}`,
@@ -1564,6 +1619,8 @@ export class PiTsp {
       this.forkSession(selected);
     } else if (picker.kind === "tree") {
       this.useTreeEntry(selected, picker.entries);
+    } else if (picker.kind === "settings") {
+      this.openSettingsChoice(selected);
     }
     this.schedule();
   }
