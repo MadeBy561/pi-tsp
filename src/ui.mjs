@@ -6,7 +6,7 @@
  * the conversation model. Keys come back on the same pty, TSP events are
  * peeled off first.
  */
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { SurfaceDoc, TspInbound, TspLink, TEXT_KINDS } from "./tsp.mjs";
@@ -53,6 +53,7 @@ export class PiTsp {
     this.picker = null;
     this.approval = null;
     this.agentModal = null;
+    this.pinned = new Set();
     this.toasts = [];
     this.menuSelected = 0;
     this.attachments = [];
@@ -458,6 +459,10 @@ export class PiTsp {
     }
     if (act === "queue-edit") {
       this.editQueue();
+      return;
+    }
+    if (act === "pin") {
+      this.togglePin();
       return;
     }
     if (act === "fork") {
@@ -940,6 +945,47 @@ export class PiTsp {
     }
   }
 
+  pinnedPath() {
+    return join(homedir(), ".pi-tsp", "pinned.json");
+  }
+
+  loadPinned() {
+    try {
+      const values = JSON.parse(readFileSync(this.pinnedPath(), "utf8"));
+      this.pinned = new Set(Array.isArray(values) ? values.filter((value) => typeof value === "string") : []);
+    } catch {
+      this.pinned = new Set();
+    }
+  }
+
+  savePinned() {
+    try {
+      writeFileSync(this.pinnedPath(), JSON.stringify([...this.pinned], null, 2), { mode: 0o600 });
+    } catch {
+      /* a pin is best-effort; the session still works */
+    }
+  }
+
+  togglePin() {
+    const picker = this.picker;
+    if (!picker || picker.kind !== "resume") return;
+    const session = picker.sessions?.find((entry) => entry.id === picker.selected);
+    if (!session) return;
+    if (this.pinned.has(session.id)) {
+      this.pinned.delete(session.id);
+      this.toast("Session unpinned");
+    } else {
+      this.pinned.add(session.id);
+      this.toast("Session pinned");
+    }
+    this.savePinned();
+    picker.pinned = this.pinned;
+    for (const item of picker.items || []) {
+      item.badges = this.pinned.has(item.id) ? [{ text: "pinned", tone: "accent" }] : [];
+    }
+    this.schedule();
+  }
+
   armDeleteSession() {
     const picker = this.picker;
     if (!picker || picker.kind !== "resume") return;
@@ -993,9 +1039,11 @@ export class PiTsp {
         this.toast("No earlier sessions in this project");
         return;
       }
+      this.loadPinned();
       for (const session of sessions) {
         session.current = session.path === this.sessionFile || (this.sessionId && session.id === this.sessionId);
       }
+      sessions.sort((a, b) => Number(this.pinned.has(b.id)) - Number(this.pinned.has(a.id)));
       this.picker = {
         kind: "resume",
         title: "Resume a session",
@@ -1005,6 +1053,7 @@ export class PiTsp {
         items: sessions.slice(0, 40).map((session) => ({
           id: session.id,
           label: session.title || "(empty session)",
+          badges: this.pinned.has(session.id) ? [{ text: "pinned", tone: "accent" }] : [],
           detail: session.preview
             ? `${session.preview.slice(0, 110)}${session.preview.length > 110 ? "…" : ""}`
             : `${session.when} · ${session.messages} messages · ${session.size}`,
@@ -1012,6 +1061,7 @@ export class PiTsp {
           dot: session.current ? "success" : "muted",
         })),
         sessions,
+        pinned: this.pinned,
       };
       this.schedule();
     } catch (error) {

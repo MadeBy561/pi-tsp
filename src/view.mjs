@@ -746,6 +746,8 @@ export function renderPicker(ctx) {
     ? [{ id: "close", label: "Close", primary: true }]
     : [{ id: "choose", label: "Choose", primary: true }];
   if (picker.kind === "resume") {
+    const pinned = picker.pinned?.has?.(picker.selected);
+    actions.push({ id: "pin", label: pinned ? "Unpin" : "Pin", keys: ["ctrl", "k"] });
     actions.push({ id: "delete", label: "Delete", keys: ["ctrl", "d"], danger: true });
   }
   return id(n("picker", {

@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.5] - 2026-11-09
+
+### Added
+
+- Pin and unpin sessions in the resume picker; pinned sessions sort first and
+  persist in `~/.pi-tsp/pinned.json`.
+
 ## [1.0.4] - 2026-11-09
 
 ### Added
