@@ -3,6 +3,14 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.14] - 2026-11-09
+
+### Added
+
+- Tree-entry labels in the `/tree` picker: `Label` opens a native input dialog
+  and writes through pi's extension-only `setLabel`; labels appear in the tree
+  list and branch preview.
+
 ## [1.0.13] - 2026-11-09
 
 ### Added

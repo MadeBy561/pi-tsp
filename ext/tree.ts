@@ -27,4 +27,24 @@ export default function treeNavigation(pi: Pi) {
       }
     },
   });
+
+  pi.registerCommand("tsp-label", {
+    description: "Internal: label a session-tree entry",
+    handler: async (args: string, ctx: Ctx) => {
+      const trimmed = String(args || "").trim();
+      const space = trimmed.indexOf(" ");
+      const entryId = space < 0 ? trimmed : trimmed.slice(0, space);
+      const label = space < 0 ? "" : trimmed.slice(space + 1).trim();
+      if (!entryId) {
+        ctx.ui.notify("A tree entry id is required", "warning");
+        return;
+      }
+      try {
+        pi.setLabel(entryId, label || undefined);
+        ctx.ui.notify(label ? `Labeled tree entry: ${label}` : "Tree label cleared", "info");
+      } catch (error: any) {
+        ctx.ui.notify(`Tree label failed: ${error?.message || error}`, "error");
+      }
+    },
+  });
 }

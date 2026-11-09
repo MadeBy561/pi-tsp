@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.13+2026.11.09";
+export const BUILD = "pit-1.0.14+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -690,7 +690,7 @@ function pickerPreview(picker) {
     const entry = picker.entries?.find((item) => item.id === picker.selected);
     if (!entry) return [];
     return [
-      id(n("text", { spans: [{ t: `${entry.role === "user" ? "You" : "pi"} · branch point`, s: "muted" }] }), "picker.preview.meta"),
+      id(n("text", { spans: [{ t: `${entry.role === "user" ? "You" : "pi"}${entry.label ? ` · ${entry.label}` : ""} · branch point`, s: "muted" }] }), "picker.preview.meta"),
       id(n("md", { text: clip(entry.text, 80, 12000) }), "picker.preview.md"),
     ];
   }
@@ -721,6 +721,9 @@ export function renderPicker(ctx) {
   const actions = picker.kind === "help"
     ? [{ id: "close", label: "Close", primary: true }]
     : [{ id: "choose", label: picker.kind === "tree" ? "Use prompt" : "Choose", primary: true }];
+  if (picker.kind === "tree") {
+    actions.push({ id: "tree-label", label: "Label", keys: ["shift", "l"] });
+  }
   if (picker.kind === "resume") {
     const pinned = picker.pinned?.has?.(picker.selected);
     actions.push({ id: "pin", label: pinned ? "Unpin" : "Pin", keys: ["ctrl", "k"] });

@@ -696,6 +696,11 @@ export class PiTsp {
       if (this.lastUserText) this.prompt(this.lastUserText);
       return;
     }
+    if (act === "tree-label") {
+      const entry = this.picker?.entries?.find((item) => item.id === this.picker.selected);
+      this.openTreeLabelDialog(entry);
+      return;
+    }
     if (act === "picker-choose" || act === "choose") {
       this.choosePicker();
       return;
@@ -1038,6 +1043,9 @@ export class PiTsp {
       if (name && dialog.renamePath && dialog.renamePath !== this.sessionFile) this.renamePickedSession(dialog.renamePath, name);
       else this.renameSession(name);
     }
+    if (dialog.local === "tree-label" && dialog.labelEntry) {
+      this.labelTreeEntry(dialog.labelEntry.id, String(value ?? ""));
+    }
     this.schedule();
   }
 
@@ -1129,6 +1137,8 @@ export class PiTsp {
               text,
               role: entry.message.role,
               depth,
+              label: node.label || "",
+              labelTimestamp: node.labelTimestamp || "",
               at: entry.message.timestamp || Date.now(),
             });
           }
@@ -1150,8 +1160,8 @@ export class PiTsp {
         selected: data.leafId || entries[entries.length - 1].id,
         items: entries.map((entry) => ({
           id: entry.id,
-          label: entry.text.slice(0, 100),
-          detail: `${entry.role === "user" ? "You" : "pi"} · ${mode === "tree" ? "tree entry" : "new branch"}`,
+          label: entry.label ? `${entry.label} · ${entry.text.slice(0, 88)}` : entry.text.slice(0, 100),
+          detail: `${entry.role === "user" ? "You" : "pi"} · ${mode === "tree" ? "tree entry" : "new branch"}${entry.label ? " · labeled" : ""}`,
           icon: entry.role === "user" ? "user" : "message",
           dot: entry.role === "assistant" ? "success" : "muted",
           depth: entry.depth || 0,
@@ -1162,6 +1172,34 @@ export class PiTsp {
     } catch (error) {
       this.trace(`TREE error ${error.message}`);
       this.toast(`could not read the session tree: ${error.message}`, "error");
+    }
+  }
+
+  openTreeLabelDialog(entry) {
+    if (!entry) return;
+    this.fieldDialog = {
+      id: null,
+      method: "input",
+      local: "tree-label",
+      labelEntry: entry,
+      title: entry.label ? "Edit tree label" : "Label tree entry",
+      message: entry.label ? "Change or clear the label for this tree entry." : "Give this tree entry a short label.",
+      text: entry.label || "",
+      placeholder: "Label (empty clears it)",
+    };
+    this.fieldInput.set(this.fieldDialog.text || "");
+    this.schedule();
+  }
+
+  async labelTreeEntry(entryId, label) {
+    const value = String(label || "").trim().replace(/\s+/g, " ");
+    try {
+      await this.rpc.command("prompt", { message: `/tsp-label ${entryId}${value ? ` ${value}` : ""}` }, 20000);
+      this.picker = null;
+      this.toast(value ? `Labeled: ${value}` : "Tree label cleared");
+      this.openForkPicker("tree");
+    } catch (error) {
+      this.toast(`tree label failed: ${error.message}`, "error");
     }
   }
 
