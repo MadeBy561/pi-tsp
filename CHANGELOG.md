@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-11-09
+
+### Fixed
+
+- The release workflow now configures a Git identity before creating the
+  annotated version tag, so a release does not depend on runner defaults.
+
 ## [1.0.0] - 2026-11-09
 
 ### Added

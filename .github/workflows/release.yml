@@ -39,6 +39,8 @@ jobs:
         if: steps.version.outputs.exists == 'false'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "pi-tsp release"
+          git config user.email "pi-tsp@users.noreply.github.com"
           git tag -a "v$VERSION" -m "pi-tsp v$VERSION"
           git push origin "v$VERSION"
 
