@@ -3,6 +3,14 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.11] - 2026-11-09
+
+### Changed
+
+- `/tree` is now a session-tree picker separate from `/fork`: it restores the
+  selected user prompt into the editor instead of immediately creating a new
+  session. `/fork` keeps the new-session behavior.
+
 ## [1.0.10] - 2026-11-09
 
 ### Added

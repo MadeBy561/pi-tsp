@@ -878,8 +878,10 @@ export class PiTsp {
         this.toast(`pi-tsp ${BUILD} · https://github.com/MadeBy561/pi-tsp/releases`);
         return;
       case "tree":
+        this.openForkPicker("tree");
+        return;
       case "fork":
-        this.openForkPicker();
+        this.openForkPicker("fork");
         return;
       case "copy":
         this.openCopyPicker();
@@ -1108,7 +1110,7 @@ export class PiTsp {
     this.schedule();
   }
 
-  async openForkPicker() {
+  async openForkPicker(mode = "fork") {
     try {
       const data = await this.rpc.command("get_tree", {}, 15000);
       this.trace(`TREE data ${JSON.stringify(data).slice(0, 120)}`);
@@ -1136,16 +1138,16 @@ export class PiTsp {
         return;
       }
       this.picker = {
-        kind: "fork",
-        title: "Fork from a message",
-        subtitle: `${entries.length} messages · choose a branch point`,
+        kind: mode,
+        title: mode === "tree" ? "Session tree" : "Fork from a message",
+        subtitle: mode === "tree" ? `${entries.length} messages · select a prompt to restore` : `${entries.length} messages · choose a branch point`,
         icon: "branch",
         layout: "tree",
         selected: data.leafId || entries[entries.length - 1].id,
         items: entries.map((entry) => ({
           id: entry.id,
           label: entry.text.slice(0, 100),
-          detail: `${entry.role === "user" ? "You" : "pi"} · new branch`,
+          detail: `${entry.role === "user" ? "You" : "pi"} · ${mode === "tree" ? "tree entry" : "new branch"}`,
           icon: entry.role === "user" ? "user" : "message",
           dot: entry.role === "assistant" ? "success" : "muted",
           depth: entry.depth || 0,
@@ -1157,6 +1159,20 @@ export class PiTsp {
       this.trace(`TREE error ${error.message}`);
       this.toast(`could not read the session tree: ${error.message}`, "error");
     }
+  }
+
+  useTreeEntry(entryId, entries = null) {
+    const entry = (entries || this.picker?.entries || []).find((item) => item.id === entryId);
+    this.picker = null;
+    if (!entry) return;
+    if (entry.role === "user") {
+      this.composer.set(entry.text);
+      this.toast("Prompt restored to the editor");
+    } else {
+      this.composer.clear();
+      this.toast("Selected assistant response; continue from here");
+    }
+    this.schedule();
   }
 
   async forkSession(entryId) {
@@ -1535,6 +1551,8 @@ export class PiTsp {
       if (item) this.copyText(item.text);
     } else if (picker.kind === "fork") {
       this.forkSession(selected);
+    } else if (picker.kind === "tree") {
+      this.useTreeEntry(selected, picker.entries);
     }
     this.schedule();
   }

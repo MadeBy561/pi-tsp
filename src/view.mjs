@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.10+2026.11.09";
+export const BUILD = "pit-1.0.11+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -686,7 +686,7 @@ export function renderApproval(conv, ctx) {
 }
 
 function pickerPreview(picker) {
-  if (picker.kind === "fork") {
+  if (picker.kind === "fork" || picker.kind === "tree") {
     const entry = picker.entries?.find((item) => item.id === picker.selected);
     if (!entry) return [];
     return [
@@ -720,7 +720,7 @@ export function renderPicker(ctx) {
   const preview = pickerPreview(picker);
   const actions = picker.kind === "help"
     ? [{ id: "close", label: "Close", primary: true }]
-    : [{ id: "choose", label: "Choose", primary: true }];
+    : [{ id: "choose", label: picker.kind === "tree" ? "Use prompt" : "Choose", primary: true }];
   if (picker.kind === "resume") {
     const pinned = picker.pinned?.has?.(picker.selected);
     actions.push({ id: "pin", label: pinned ? "Unpin" : "Pin", keys: ["ctrl", "k"] });
