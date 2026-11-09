@@ -1,0 +1,47 @@
+name: version-check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Require a higher package version
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const { readFileSync } = require('node:fs');
+          const baseRef = process.env.BASE_REF;
+          const base = JSON.parse(execFileSync('git', ['show', `origin/${baseRef}:package.json`], { encoding: 'utf8' })).version;
+          const current = JSON.parse(readFileSync('package.json', 'utf8')).version;
+          const parse = (value) => String(value).split('-')[0].split('.').map(Number);
+          const a = parse(current);
+          const b = parse(base);
+          let cmp = 0;
+          for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+            if ((a[i] || 0) > (b[i] || 0)) { cmp = 1; break; }
+            if ((a[i] || 0) < (b[i] || 0)) { cmp = -1; break; }
+          }
+          if (cmp <= 0) {
+            console.error(`package.json must be higher than ${baseRef} (${base}); current is ${current}.`);
+            console.error('Bump the SemVer version and add a matching CHANGELOG.md section.');
+            process.exit(1);
+          }
+          console.log(`Version check passed: ${base} -> ${current}`);
+          NODE

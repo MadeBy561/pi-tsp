@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+import { main } from "../src/launcher.mjs";
+
+main(process.argv.slice(2)).catch((error) => {
+  process.stderr.write(`pi-tsp: ${error?.stack || error}\n`);
+  process.exit(1);
+});

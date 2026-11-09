@@ -1,0 +1,45 @@
+{
+  "name": "pi-tsp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A native Tern surface for the pi coding agent: semantic transcript, tool cards, diffs, subagents, approvals, pickers and a real composer over pi's RPC session.",
+  "bin": {
+    "pi-tsp": "./bin/pi-tsp"
+  },
+  "files": [
+    "bin",
+    "src",
+    "ext",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node ./bin/pi-tsp",
+    "setup": "node ./src/setup.mjs",
+    "test": "node --test test/*.test.mjs",
+    "pack": "npm pack"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "keywords": [
+    "pi",
+    "tern",
+    "tsp",
+    "coding-agent",
+    "terminal",
+    "tui",
+    "native-surface"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MadeBy561/pi-tsp.git"
+  },
+  "homepage": "https://github.com/MadeBy561/pi-tsp#readme",
+  "bugs": {
+    "url": "https://github.com/MadeBy561/pi-tsp/issues"
+  },
+  "license": "MIT"
+}

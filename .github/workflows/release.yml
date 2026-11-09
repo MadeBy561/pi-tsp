@@ -1,0 +1,76 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test
+        run: npm test
+
+      - name: Read version and tag state
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v$VERSION already exists; nothing to release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Releasing v$VERSION."
+          fi
+
+      - name: Create tag
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git tag -a "v$VERSION" -m "pi-tsp v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Build installable tarball
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          npm pack --silent | tail -1 > /tmp/asset-name.txt
+          cat /tmp/asset-name.txt
+
+      - name: Extract release notes
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on=1 }
+            on && $0 ~ "^## \\[" && $0 !~ "^## \\[" v "\\]" { exit }
+            on { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            printf 'pi-tsp v%s\n' "$VERSION" > /tmp/release-notes.md
+          fi
+          cat /tmp/release-notes.md
+
+      - name: Publish GitHub release
+        if: steps.version.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ASSET=$(cat /tmp/asset-name.txt)
+          gh release create "v$VERSION" "$ASSET#pi-tsp-$VERSION.tgz" \
+            --repo "${{ github.repository }}" \
+            --title "pi-tsp v$VERSION" \
+            --notes-file /tmp/release-notes.md

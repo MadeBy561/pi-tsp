@@ -1,0 +1,7 @@
+node_modules/
+.pi-tsp/
+.pi/
+*.log
+*.tgz
+.DS_Store
+coverage/
