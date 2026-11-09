@@ -129,13 +129,7 @@ export class PiTsp {
     for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"]) {
       process.on(signal, () => this.shutdown(signal));
     }
-    process.on("exit", () => {
-      try {
-        this.link.close(SURFACE, true);
-      } catch {
-        /* the pty may already be gone */
-      }
-    });
+    process.on("exit", () => this.closeLink());
 
     if (this.leftover?.length) this.onInput(this.leftover);
     await this.startRpc();
@@ -2267,6 +2261,19 @@ export class PiTsp {
     }
   }
 
+  closeLink() {
+    if (this.linkClosed) return;
+    this.linkClosed = true;
+    // Send exactly one close. The host owns the pane after that; a second
+    // close (the old exit-handler always sent one) is what made Tern emit
+    // "unknown surface pit".
+    try {
+      this.link.close(SURFACE, true);
+    } catch {
+      /* the pty may already be gone */
+    }
+  }
+
   async shutdown(reason) {
     if (this.stopping) return;
     this.stopping = true;
@@ -2277,11 +2284,7 @@ export class PiTsp {
     } catch {
       /* gone */
     }
-    try {
-      this.link.close(SURFACE, true);
-    } catch {
-      /* gone */
-    }
-    setTimeout(() => process.exit(0), 120);
+    this.closeLink();
+    setTimeout(() => process.exit(0), 500);
   }
 }

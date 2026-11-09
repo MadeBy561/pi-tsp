@@ -3,6 +3,14 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.21] - 2026-11-09
+
+### Fixed
+
+- Ctrl+C exit now closes the Tern surface exactly once. The old exit
+  handler sent a second close after the quit path, which made Tern emit
+  `{"ev":"error","sf":"pit","msg":"unknown surface pit"}` into the terminal.
+
 ## [1.0.20] - 2026-11-09
 
 ### Fixed
