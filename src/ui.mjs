@@ -80,6 +80,11 @@ export class PiTsp {
     this.renderCount = 0;
     this.renderMs = 0;
     this.toastSeq = 0;
+    this.notifySeq = 0;
+    this.notifyPending = false;
+    this.lastPromptAt = 0;
+    this.ttftLogged = false;
+    this.firstTokenPainted = false;
     this.lastItemCount = 0;
   }
 
@@ -194,15 +199,20 @@ export class PiTsp {
     try {
       const state = await this.rpc.command("get_state", {}, 15000);
       this.applyState(state);
-      const models = await this.rpc.command("get_available_models", {}, 10000);
+      // Paint the shell before the slower discovery calls. This keeps startup
+      // responsive while models, commands, stats and history arrive in parallel.
+      this.schedule();
+      const [models, levels, commands, stats, messages] = await Promise.all([
+        this.rpc.command("get_available_models", {}, 10000).catch(() => ({ models: [] })),
+        this.rpc.command("get_available_thinking_levels", {}, 10000).catch(() => ({ levels: [] })),
+        this.rpc.command("get_commands", {}, 10000).catch(() => ({ commands: [] })),
+        this.rpc.command("get_session_stats", {}, 10000).catch(() => null),
+        this.rpc.command("get_messages", {}, 15000).catch(() => ({ messages: [] })),
+      ]);
       this.models = models.models || [];
-      const levels = await this.rpc.command("get_available_thinking_levels", {}, 10000);
       if (levels.levels?.length) this.levels = levels.levels;
-      const commands = await this.rpc.command("get_commands", {}, 10000);
       this.commands = commands.commands || [];
-      const stats = await this.rpc.command("get_session_stats", {}, 10000);
       this.applyStats(stats);
-      const messages = await this.rpc.command("get_messages", {}, 15000);
       if (messages.messages?.length) {
         this.conv.loadMessages(messages.messages);
       }
@@ -246,6 +256,17 @@ export class PiTsp {
     }
     if (event.type === "response") return;
     this.conv.onEvent(event);
+    if (this.lastPromptAt && this.conv.turnFirstTokenAt && !this.ttftLogged) {
+      this.ttftLogged = true;
+      this.trace(`TTFT ${Date.now() - this.lastPromptAt}ms`);
+    }
+    if (event.type === "agent_settled" && this.notifyPending) {
+      const last = [...this.conv.items].reverse().find((item) => item.kind === "assistant");
+      if (last && last.stopReason !== "aborted" && last.stopReason !== "error" && !this.conv.error) {
+        this.sendCompletionNotification();
+      }
+      this.notifyPending = false;
+    }
     if (event.type === "agent_settled" || event.type === "turn_end") {
       this.rpc.command("get_session_stats", {}, 8000).then((stats) => {
         this.applyStats(stats);
@@ -303,6 +324,19 @@ export class PiTsp {
     }
     // Unknown dialog method: cancel so the agent never hangs.
     if (request.id) this.rpc.respondExtensionUi(request.id, { cancelled: true });
+  }
+
+  sendCompletionNotification() {
+    if (["off", "0", "false"].includes(String(process.env.PI_NOTIFICATIONS || "").toLowerCase())) return;
+    const title = String(this.conv.sessionName || "pi").replace(/[\x00-\x1f\x7f]/g, "").slice(0, 120) || "pi";
+    const body = "Complete";
+    const id = `pi-${this.sessionId || "session"}-${++this.notifySeq}`.replace(/[^a-zA-Z0-9_+.-]/g, "");
+    const b64 = (value) => Buffer.from(value, "utf8").toString("base64");
+    const meta = `i=${id}:f=${b64("pi")}:a=focus:t=${b64("completion")}`;
+    const chunk = (m, value, hold) => `\x1b]99;${m}${hold ? ":d=0" : ""};${value}\x1b\\`;
+    try {
+      process.stdout.write(chunk(meta, title, true) + chunk(`i=${id}:p=body`, body, false));
+    } catch { /* notifications are best-effort */ }
   }
 
   toast(text, tone = "info") {
@@ -931,6 +965,10 @@ export class PiTsp {
     if (!isCommand) {
       this.conv.addUser(text, images);
       this.conv.busy = true;
+      this.notifyPending = true;
+      this.lastPromptAt = Date.now();
+      this.ttftLogged = false;
+      this.firstTokenPainted = false;
     }
     this.conv.error = null;
     this.conv.turnStartedAt = Date.now();
@@ -959,6 +997,7 @@ export class PiTsp {
 
   abort() {
     this.rpc.command("abort", {}, 15000).catch(() => {});
+    this.notifyPending = false;
     this.conv.busy = false;
     this.schedule();
   }
@@ -968,6 +1007,7 @@ export class PiTsp {
       await this.rpc.command("new_session", {}, 15000);
       this.conv.loadMessages([]);
       this.conv.error = null;
+      this.notifyPending = false;
       this.agentModal = null;
       this.picker = null;
       this.approval = null;
@@ -1777,6 +1817,13 @@ export class PiTsp {
   schedule() {
     if (this.closed) return;
     this.dirty = true;
+    // Paint the first token immediately instead of waiting for the 16 ms
+    // frame slot; that is the latency the user perceives as TTFT.
+    if (this.conv.busy && this.conv.turnFirstTokenAt && !this.firstTokenPainted) {
+      this.firstTokenPainted = true;
+      this.renderNow();
+      return;
+    }
     if (this.renderTimer) return;
     this.renderTimer = setTimeout(() => {
       this.renderTimer = null;
@@ -1857,7 +1904,9 @@ export class PiTsp {
     }
     this.dirty = false;
     this.renderCount += 1;
-    this.renderMs += performance.now() - started;
+    const elapsed = performance.now() - started;
+    this.renderMs += elapsed;
+    if (elapsed > 8 && process.env.PI_TSP_TRACE) this.trace(`render ${elapsed.toFixed(1)}ms`);
   }
 
   trace(line) {

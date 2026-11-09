@@ -3,6 +3,19 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.9] - 2026-11-09
+
+### Changed
+
+- Quiet the transcript to match omp: removed per-message timestamps and the
+  per-turn completion divider; completed thinking is a collapsed
+  `Thought for …` line.
+- Added the Tern completion notification (`pi` / `Complete`) over OSC 99 when
+  a turn settles successfully, matching omp's completion notification.
+- Paint the first token immediately and start model, command, stats and
+  history discovery in parallel; the render loop remains capped at 16 ms
+  (60 fps) and now records TTFT/render timing under `PI_TSP_TRACE`.
+
 ## [1.0.8] - 2026-11-09
 
 ### Added

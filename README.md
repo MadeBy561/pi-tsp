@@ -64,6 +64,7 @@ stock `pi` with the original arguments.
 | Read grouping | Consecutive reads collapse into one expandable card |
 | Executions | Bash and Python/eval rows with output and exit status |
 | Thinking | A collapsible reasoning row when the model emits it |
+| Notifications | Completion toast through Tern program notifications (`pi` / `Complete`) |
 | Shell | `!command` runs through pi and adds output to context; `!!command` keeps it out |
 | Extension UI | Native `input` and `editor` dialogs, plus select/confirm approvals and status notices |
 | Subagents | Agent, model, tools, tokens, elapsed time and a full transcript modal |
@@ -118,8 +119,8 @@ pi-tsp
 Or install a release tarball:
 
 ```sh
-gh release download v1.0.8 --repo MadeBy561/pi-tsp --pattern '*.tgz'
-npm install -g ./pi-tsp-1.0.8.tgz
+gh release download v1.0.9 --repo MadeBy561/pi-tsp --pattern '*.tgz'
+npm install -g ./pi-tsp-1.0.9.tgz
 pi-tsp
 ```
 

@@ -109,6 +109,7 @@ export class Conversation {
     this.busy = false;
     this.startedAt = 0;
     this.settledAt = 0;
+    this.lastStopReason = "";
     this.model = "";
     this.provider = "";
     this.thinkingLevel = "";
@@ -396,6 +397,7 @@ export class Conversation {
           }
           this.lastTurnMs = Date.now() - this.turnStartedAt;
           this.lastTurnTokens = assistant.usage?.output || 0;
+          this.lastStopReason = assistant.stopReason || "";
           const outputTokens = assistant.usage?.output || 0;
           const decodeMs = Date.now() - (this.turnFirstTokenAt || this.turnStartedAt);
           if (outputTokens > 0 && decodeMs > 0) {
@@ -410,6 +412,7 @@ export class Conversation {
       case "agent_start":
         this.busy = true;
         this.startedAt = Date.now();
+        this.lastStopReason = "";
         this.touch();
         break;
       case "agent_end":
@@ -552,6 +555,7 @@ export class Conversation {
   }
 
   endAssistant(message) {
+    this.lastStopReason = message.stopReason || this.lastStopReason || "";
     const pending = this.pendingAssistant;
     const now = Date.now();
     const blocks = Array.isArray(message.content) ? message.content : [];

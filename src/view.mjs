@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.8+2026.11.09";
+export const BUILD = "pit-1.0.9+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -360,15 +360,13 @@ export function renderThinking(item, ctx) {
   if (ctx.hideThinking) return null;
   const streaming = item.status === "running" || item.status === "streaming";
   const head = id(n("row", { gap: "xs", align: "center" }, [
-    id(n("icon", { name: "thinking", tone: "muted" }), `${item.id}.ic`),
-    id(n("text", { spans: [{ t: streaming ? "Thinking" : "Thought", s: "muted" }] }), `${item.id}.lbl`),
+    id(n("text", { spans: [{ t: streaming ? "Thinking" : `Thought${item.tookMs ? ` for ${humanMs(item.tookMs)}` : ""}`, s: "muted" }] }), `${item.id}.lbl`),
     streaming ? id(n("spinner", { style: "dots" }), `${item.id}.spin`) : null,
-    item.tookMs ? id(n("text", { spans: [{ t: ` · ${humanMs(item.tookMs)}`, s: "dim" }] }), `${item.id}.took`) : null,
   ]), `${item.id}.head`);
   return id(n("section", {
     role: "pit.thinking",
     collapsible: true,
-    collapsed: !streaming && !ctx.expandAll && (ctx.collapseThoughts ?? false),
+    collapsed: !ctx.expandAll,
     head: `${item.id}.head`,
   }, [head, id(n("md", { text: item.text || "", stream: streaming }), `${item.id}.body`)]), item.id);
 }
@@ -483,43 +481,18 @@ export function renderUser(item, ctx) {
     body.push(id(n("row", { gap: "sm", align: "start" }, imgs), `${item.id}.imgs`));
   }
   body.push(id(n("md", { text: item.text || "" }), `${item.id}.md`));
-  // Keep the turn meta outside the bubble, as omp does. If the copy/time row is
-  // inside the card, its minimum width stretches a short prompt into a much
-  // wider bubble than the native surface.
-  const meta = id(n("row", { role: "pit.usermeta", gap: "xs", align: "center", justify: "end" }, [
-    id(n("icon", {
-      name: "copy",
-      title: "Copy message",
-      aria: "Copy message",
-      role: "pit.copy",
-      actions: { click: "copy-message" },
-    }), `${item.id}.copy`),
-    id(n("text", { spans: [{ t: clock(item.at), s: "dim" }] }), `${item.id}.time`),
-  ]), `${item.id}.meta`);
-  return id(n("col", { role: "pit.usercol", gap: "none" }, [
-    id(n("row", { gap: "none", align: "end" }, [
-      id(n("spacer", { grow: 1 }), `${item.id}.sp`),
-      id(n("card", { role: "pit.user", tone: "user", basis: "content", grow: 0, max: { w: "82ch" }, inset: true }, body), `${item.id}.card`),
-    ]), `${item.id}.row`),
-    meta,
+  // omp's transcript is deliberately quiet: no timestamp or completion
+  // telemetry beside a turn. Keep the bubble content-fit and metadata-free.
+  return id(n("row", { gap: "none", align: "end" }, [
+    id(n("spacer", { grow: 1 }), `${item.id}.sp`),
+    id(n("card", { role: "pit.user", tone: "user", basis: "content", grow: 0, max: { w: "82ch" }, inset: true }, body), `${item.id}.card`),
   ]), item.id);
 }
 
 export function renderAssistant(item, ctx) {
   const streaming = item.status === "streaming" || item.status === "pending";
-  const meta = id(n("row", { gap: "xs", align: "center", justify: "start" }, [
-    id(n("icon", {
-      name: "copy",
-      title: "Copy answer",
-      aria: "Copy answer",
-      role: "pit.copy",
-      actions: { click: "copy-answer" },
-    }), `${item.id}.copy`),
-    id(n("text", { spans: [{ t: clock(item.at), s: "dim" }] }), `${item.id}.time`),
-  ]), `${item.id}.head`);
-  return id(n("col", { gap: "xs", role: "pit.answer" }, [
+  return id(n("col", { gap: "none", role: "pit.answer" }, [
     id(n("md", { text: item.text || "", stream: streaming, actions: { menu: ["copy"] } }), `${item.id}.md`),
-    meta,
   ]), item.id);
 }
 
@@ -544,9 +517,6 @@ export function renderTranscript(conv, ctx) {
   const out = [];
   let turn = [];
   const flush = () => {
-    if (!turn.length) return;
-    const footer = footerForTurn(turn, ctx);
-    if (footer) out.push(footer);
     turn = [];
   };
   for (let index = 0; index < conv.items.length; index += 1) {
@@ -1113,7 +1083,7 @@ export const STYLESHEET = `
 [data-role="pit.user"] .sf-card-body{padding:10px 16px!important}
 [data-role="pit.usermeta"]{padding:2px 2px 0 0}
 [data-role="pit.usermeta"] .sf-text{font-size:11px!important}
-[data-role="pit.thinking"]{opacity:.85;border-left:2px solid rgba(124,92,255,.32);padding-left:10px}
+[data-role="pit.thinking"]{opacity:.82;padding-left:0}
 [data-role="pit.compaction"], [data-role="pit.branch"]{opacity:.92;padding:2px 0}
 [data-role="pit.custom"], [data-role="pit.hook"]{border-left:3px solid rgba(34,211,238,.4)!important}
 [data-role="pit.todos"]{margin-top:4px}
