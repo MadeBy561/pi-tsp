@@ -3,6 +3,17 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.24] - 2026-11-09
+
+### Fixed
+
+- macOS clipboard images now fall back to TIFF and convert through `sips`
+  when the pasteboard does not expose PNG data (the common screenshot case).
+- Finder `Cmd+C` image files are read from the pasteboard's file URL
+  representation and attached as images.
+- Bracketed-paste completion exposes its text to the surface, so empty paste
+  and pasted image paths work through the same path as Ctrl+V.
+
 ## [1.0.23] - 2026-11-09
 
 ### Added

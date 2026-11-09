@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isImagePath, mimeForImage, readImageFile } from "../src/clipboard.mjs";
+import { Composer } from "../src/keys.mjs";
 
 // A valid 1x1 PNG, enough for the clipboard signature and file reader.
 const PNG = Buffer.from(
@@ -31,4 +32,13 @@ test("image paths become RPC image blocks", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("bracketed paste reports its completed text to the UI", () => {
+  const composer = new Composer();
+  const empty = composer.feed("\x1b[200~\x1b[201~");
+  assert.equal(empty.paste, "");
+  const text = composer.feed("\x1b[200~hello\x1b[201~");
+  assert.equal(text.paste, "hello");
+  assert.equal(composer.text, "hello");
 });

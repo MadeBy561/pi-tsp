@@ -14,7 +14,7 @@ import { PiRpc } from "./rpc.mjs";
 import { Composer } from "./keys.mjs";
 import { Conversation, fmtModel, textOf } from "./state.mjs";
 import { BUILD, THEME, TEXT_CSS, buildView, STYLESHEET, clock, firstLine, humanMs, humanTokens, spans, providerIcon } from "./view.mjs";
-import { isImagePath, readClipboardImage, readClipboardText, readImageFile } from "./clipboard.mjs";
+import { isImagePath, readClipboardFilePaths, readClipboardImage, readClipboardText, readImageFile } from "./clipboard.mjs";
 import { listSessions, sessionPath } from "./sessions.mjs";
 import { configDir, sessionDir } from "./setup.mjs";
 
@@ -1952,6 +1952,11 @@ export class PiTsp {
       const image = readClipboardImage();
       if (image) {
         this.addImageAttachment(image);
+        return;
+      }
+      const filePaths = readClipboardFilePaths().filter(isImagePath);
+      if (filePaths.length) {
+        for (const path of filePaths) this.attach(path);
         return;
       }
       const text = readClipboardText();

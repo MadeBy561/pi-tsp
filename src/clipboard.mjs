@@ -90,29 +90,76 @@ function imageFromBuffer(buffer) {
 }
 
 function readMacImage() {
-  const path = join(tmpdir(), `pi-tsp-clipboard-${process.pid}-${Date.now()}.png`);
-  const escaped = path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const stem = join(tmpdir(), `pi-tsp-clipboard-${process.pid}-${Date.now()}`);
+  const pngPath = `${stem}.png`;
+  const tiffPath = `${stem}.tiff`;
+  const escapedPng = pngPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escapedTiff = tiffPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const script = [
     "try",
     "  set pngData to the clipboard as «class PNGf»",
+    `  set f to open for access POSIX file "${escapedPng}" with write permission`,
+    "  set eof f to 0",
+    "  write pngData to f",
+    "  close access f",
+    '  return "PNG"',
     "on error",
-    '  return "NO"',
+    "  try",
+    "    set tiffData to the clipboard as «class TIFF»",
+    `    set f to open for access POSIX file "${escapedTiff}" with write permission`,
+    "    set eof f to 0",
+    "    write tiffData to f",
+    "    close access f",
+    '    return "TIFF"',
+    "  on error",
+    '    return "NO"',
+    "  end try",
     "end try",
-    `set f to open for access POSIX file "${escaped}" with write permission`,
-    "set eof f to 0",
-    "write pngData to f",
-    "close access f",
-    'return "OK"',
   ].join("\n");
   const answer = runText("osascript", ["-e", script]);
-  if (!answer.includes("OK")) return null;
   try {
-    return imageFromBuffer(readFileSync(path));
+    if (answer.includes("PNG")) return imageFromBuffer(readFileSync(pngPath));
+    if (answer.includes("TIFF")) {
+      runText("sips", ["-s", "format", "png", tiffPath, "--out", pngPath], 3000);
+      return imageFromBuffer(readFileSync(pngPath));
+    }
+    return null;
   } catch {
     return null;
   } finally {
-    try { unlinkSync(path); } catch { /* temp file already gone */ }
+    for (const path of [pngPath, tiffPath]) {
+      try { unlinkSync(path); } catch { /* temp file already gone */ }
+    }
   }
+}
+
+function readMacFilePaths() {
+  if (process.platform !== "darwin") return [];
+  const script = [
+    "on run",
+    '  set output to ""',
+    "  try",
+    "    if (clipboard info for «class furl») is {} then return output",
+    "    set theClip to the clipboard as «class furl»",
+    "    if class of theClip is list then",
+    "      repeat with anItem in theClip",
+    "        try",
+    "          set output to output & POSIX path of anItem & linefeed",
+    "        end try",
+    "      end repeat",
+    "    else",
+    "      try",
+    "        set output to POSIX path of theClip & linefeed",
+    "      end try",
+    "    end if",
+    "  end try",
+    "  return output",
+    "end run",
+  ].join("\n");
+  return runText("osascript", ["-e", script])
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function readWindowsImage() {
@@ -159,6 +206,10 @@ export function readClipboardImage() {
     /* clipboard tools are optional */
   }
   return null;
+}
+
+export function readClipboardFilePaths() {
+  return readMacFilePaths();
 }
 
 export function readClipboardText() {
