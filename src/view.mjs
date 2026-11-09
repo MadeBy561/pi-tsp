@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.19+2026.11.09";
+export const BUILD = "pit-1.0.20+2026.11.09";
 
 export const THEME = {
   dark: {

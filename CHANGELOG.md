@@ -3,6 +3,17 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.20] - 2026-11-09
+
+### Fixed
+
+- The transcript no longer calls `reveal("tail", "end")` on every streamed
+  token. That made the viewport snap to the bottom continuously and made
+  scrolling up impossible while a response was generating.
+- Auto-follow now happens only when the transcript gains a new row (user
+  message, assistant block, tool result), not on token deltas. Scroll up
+  during streaming and the viewport stays where you put it.
+
 ## [1.0.19] - 2026-11-09
 
 ### Fixed

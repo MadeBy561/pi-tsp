@@ -2243,7 +2243,10 @@ export class PiTsp {
     const started = performance.now();
     const view = buildView(this.conv, this.context());
     this.doc.setRegions(view);
-    if (this.conv.busy || this.conv.items.length !== this.lastItemCount) {
+    // Follow new rows (user message, new assistant block, tool result), but
+    // never re-reveal on token deltas. Forcing `reveal` on every streamed
+    // token is what made the transcript impossible to scroll while busy.
+    if (this.conv.items.length !== this.lastItemCount) {
       this.lastItemCount = this.conv.items.length;
       this.doc.reveal("tail", "end");
     }
