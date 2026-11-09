@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.25] - 2026-11-09
+
+### Changed
+
+- Refreshed the README screenshots under versioned filenames so GitHub's
+  image cache cannot serve an older launch state. The model provider logo is
+  inline in the composer pill; the screenshots now match the live surface.
 ## [1.0.24] - 2026-11-09
 
 ### Fixed

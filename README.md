@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/pi-tsp.png" alt="pi-tsp launch surface" width="100%">
+  <img src="docs/pi-tsp-1.0.25.png" alt="pi-tsp launch surface" width="100%">
 </p>
 
 ---
@@ -48,8 +48,8 @@ stock `pi` with the original arguments.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/pi-tsp-turn.png" alt="A conversation with a model, tool card and answer"></td>
-    <td width="50%"><img src="docs/pi-tsp.png" alt="The native launch state and composer"></td>
+    <td width="50%"><img src="docs/pi-tsp-turn-1.0.25.png" alt="A conversation with a model, tool card and answer"></td>
+    <td width="50%"><img src="docs/pi-tsp-1.0.25.png" alt="The native launch state and composer"></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Transcript</b> — user and assistant turns, tool cards, timing and token rate, with the model and effort chips in the composer.</sub></td>
@@ -120,8 +120,8 @@ pi-tsp
 Or install a release tarball:
 
 ```sh
-gh release download v1.0.24 --repo MadeBy561/pi-tsp --pattern '*.tgz'
-npm install -g ./pi-tsp-1.0.24.tgz
+gh release download v1.0.25 --repo MadeBy561/pi-tsp --pattern '*.tgz'
+npm install -g ./pi-tsp-1.0.25.tgz
 pi-tsp
 ```
 
