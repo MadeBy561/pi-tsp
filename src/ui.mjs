@@ -151,6 +151,7 @@ export class PiTsp {
       join(here, "..", "ext", "permissions.ts"),
       join(here, "..", "ext", "plan.ts"),
       join(here, "..", "ext", "todo.ts"),
+      join(here, "..", "ext", "tree.ts"),
     ].filter((path) => existsSync(path));
   }
 
@@ -1165,12 +1166,22 @@ export class PiTsp {
     const entry = (entries || this.picker?.entries || []).find((item) => item.id === entryId);
     this.picker = null;
     if (!entry) return;
-    if (entry.role === "user") {
-      this.composer.set(entry.text);
-      this.toast("Prompt restored to the editor");
-    } else {
-      this.composer.clear();
-      this.toast("Selected assistant response; continue from here");
+    this.treeSession(entry);
+  }
+
+  async treeSession(entry) {
+    try {
+      await this.rpc.command("prompt", { message: `/tsp-tree ${entry.id}` }, 30000);
+      await this.refreshCurrent();
+      if (entry.role === "user") {
+        this.composer.set(entry.text);
+        this.toast("Moved to that branch; prompt restored");
+      } else {
+        this.composer.clear();
+        this.toast("Moved to that branch");
+      }
+    } catch (error) {
+      this.toast(`tree navigation failed: ${error.message}`, "error");
     }
     this.schedule();
   }

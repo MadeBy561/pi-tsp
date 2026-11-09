@@ -3,6 +3,15 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.12] - 2026-11-09
+
+### Added
+
+- In-session tree navigation through the bundled `tsp-tree` extension command,
+  using pi's extension-only `ctx.navigateTree()` API. `/tree` now moves the
+  active branch and can generate pi's branch summary; `/fork` still creates a
+  separate session.
+
 ## [1.0.11] - 2026-11-09
 
 ### Changed
