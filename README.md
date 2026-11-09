@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/pi-tsp-turn-1.0.25.png" alt="pi-tsp active session" width="100%">
+  <img src="docs/pi-tsp-turn-1.0.24.png" alt="pi-tsp active session" width="100%">
 </p>
 
 ---
@@ -109,8 +109,8 @@ pi-tsp
 Or install a release tarball:
 
 ```sh
-gh release download v1.0.25 --repo MadeBy561/pi-tsp --pattern '*.tgz'
-npm install -g ./pi-tsp-1.0.25.tgz
+gh release download v1.0.24 --repo MadeBy561/pi-tsp --pattern '*.tgz'
+npm install -g ./pi-tsp-1.0.24.tgz
 pi-tsp
 ```
 
