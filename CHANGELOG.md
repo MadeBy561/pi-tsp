@@ -3,6 +3,21 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-11-09
+
+### Added
+
+- Queued steering and follow-up chips above the composer, with a click to pull
+  queued messages back into the editor.
+- Session tree/fork picker (`/tree` and `/fork`) backed by pi's `get_tree` and
+  `fork` RPC commands.
+- Native todo phases from omp-style todo details, including active, done,
+  blocked and dropped states.
+
+### Changed
+
+- Composer status now includes per-turn token counts.
+
 ## [1.0.1] - 2026-11-09
 
 ### Fixed

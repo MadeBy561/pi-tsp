@@ -438,12 +438,27 @@ export function renderTodos(conv, ctx) {
   if (!todos.length) return null;
   const done = todos.filter((todo) => todo.status === "done").length;
   const active = todos.find((todo) => todo.status === "active");
-  const items = todos.map((todo, index) => ({
-    id: `todo${index}`,
-    text: todo.text,
-    status: todo.status === "done" ? "done" : todo.status === "active" ? "active" : "pending",
-    ...(todo.status === "blocked" ? { note: "blocked" } : {}),
-  }));
+  const phases = conv.todos.phases?.length
+    ? conv.todos.phases.map((phase, phaseIndex) => ({
+      id: phase.id || `phase${phaseIndex}`,
+      title: [{ t: phase.name || `Phase ${phaseIndex + 1}`, s: "strong" }],
+      items: phase.items.map((todo, index) => ({
+        id: `todo${phaseIndex}.${index}`,
+        text: todo.text,
+        status: todo.status === "done" ? "done"
+          : todo.status === "active" ? "active"
+          : todo.status === "dropped" ? "dropped"
+          : todo.status === "blocked" ? "blocked"
+          : "pending",
+        ...(todo.note ? { note: [{ t: todo.note, s: "muted" }] } : {}),
+      })),
+    }))
+    : [{ id: "todos", title: [{ t: `Todo · ${done}/${todos.length}`, s: "strong" }], items: todos.map((todo, index) => ({
+      id: `todo${index}`,
+      text: todo.text,
+      status: todo.status === "done" ? "done" : todo.status === "active" ? "active" : "pending",
+      ...(todo.status === "blocked" ? { note: [{ t: "blocked", s: "muted" }] } : {}),
+    })) }];
   const title = `Todo · ${done}/${todos.length}`;
   if (ctx.kinds && !ctx.kinds.has("checklist")) {
     return id(n("card", { role: "pit.todos", inset: true }, [
@@ -451,7 +466,7 @@ export function renderTodos(conv, ctx) {
     ]), "todos");
   }
   return id(n("checklist", {
-    phases: [{ id: "todos", title: [{ t: title, s: "strong" }], items }],
+    phases,
     mode: "full",
     note: done === todos.length ? [{ t: "All done", s: "success" }] : undefined,
   }), "todos");
@@ -694,6 +709,14 @@ export function renderApproval(conv, ctx) {
 }
 
 function pickerPreview(picker) {
+  if (picker.kind === "fork") {
+    const entry = picker.entries?.find((item) => item.id === picker.selected);
+    if (!entry) return [];
+    return [
+      id(n("text", { spans: [{ t: `${entry.role === "user" ? "You" : "pi"} · branch point`, s: "muted" }] }), "picker.preview.meta"),
+      id(n("md", { text: clip(entry.text, 80, 12000) }), "picker.preview.md"),
+    ];
+  }
   if (picker.kind === "copy") {
     const item = picker.texts?.find((entry) => entry.id === picker.selected);
     if (!item?.text) return [];
@@ -775,6 +798,35 @@ export function renderAgentModal(ctx) {
     anchor: "center", modal: true, size: "lg",
     head: spans("Subagent transcript"), icon: "agents",
   }, [id(n("col", { gap: "sm", role: "pit.agentmodal" }, body), "am.body")]), "agentmodal");
+}
+
+function queueRows(ctx) {
+  const queue = ctx.queue || {};
+  const groups = [
+    ["Steering", queue.steering || []],
+    ["After yield", queue.followUp || []],
+  ].filter(([, messages]) => messages.length);
+  if (!groups.length) return null;
+  const total = groups.reduce((sum, [, messages]) => sum + messages.length, 0);
+  const rows = [];
+  for (const [label, messages] of groups) {
+    messages.forEach((message, index) => {
+      rows.push(id(n("row", {
+        role: "pit.queue",
+        gap: "xs",
+        align: "center",
+        actions: { click: "queue-edit" },
+        title: `${label}: ${message}`,
+      }, [
+        id(n("icon", { name: "corner-down-right", tone: "info" }), `queue.${label}.${index}.ic`),
+        id(n("text", { spans: [{ t: String(message).replace(/\s+/g, " ").slice(0, 120), s: "muted" }], truncate: "end", grow: 1 }), `queue.${label}.${index}.t`),
+        index === 0 && total > 1
+          ? id(n("badge", { text: `${total} queued` }), `queue.${label}.${index}.count`)
+          : null,
+      ]), `queue.${label}.${index}`));
+    });
+  }
+  return id(n("col", { gap: "xs", role: "pit.queuerows" }, rows), "queue.rows");
 }
 
 export function composer(conv, ctx) {
@@ -901,6 +953,7 @@ export function composer(conv, ctx) {
         id(n("col", { gap: "sm", role: "pit.composerbody" }, [
           ctx.compact ? null : meter,
           ctx.compact ? null : meterRow,
+          queueRows(ctx),
           menu,
           editor,
           id(n("row", { gap: "xs", align: "center", role: "pit.chiprow", wrap: false }, chips), "composer.chiprow"),

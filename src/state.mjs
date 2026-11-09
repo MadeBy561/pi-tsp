@@ -49,22 +49,40 @@ export function contentText(content) {
 }
 
 /** Normalize pi/omp todo tool details to one stable board shape. */
-function todosFromDetails(details) {
+function todoPhasesFromDetails(details) {
   if (!details || typeof details !== "object") return null;
-  const direct = details.todos || details.todoPhases || details.items;
   const phases = Array.isArray(details.phases) ? details.phases : [];
-  const raw = Array.isArray(direct)
-    ? direct
-    : phases.flatMap((phase) => Array.isArray(phase?.items) ? phase.items : []);
-  if (!Array.isArray(raw)) return null;
-  return raw.map((todo, index) => {
-    const status = String(todo?.status || (todo?.done ? "done" : todo?.completed ? "done" : "pending"));
-    return {
-      id: String(todo?.id ?? index + 1),
-      text: String(todo?.text ?? todo?.content ?? todo?.title ?? ""),
-      status: status === "completed" ? "done" : status,
-    };
-  }).filter((todo) => todo.text);
+  if (phases.length) {
+    return phases.map((phase, phaseIndex) => ({
+      id: String(phase?.id ?? phaseIndex),
+      name: String(phase?.name ?? phase?.title ?? `Phase ${phaseIndex + 1}`),
+      items: (phase?.tasks || phase?.items || []).map((todo, index) => {
+        const rawStatus = String(todo?.status || (todo?.done ? "done" : todo?.completed ? "done" : "pending"));
+        const status = rawStatus === "completed" ? "done"
+          : rawStatus === "in_progress" ? "active"
+          : rawStatus === "abandoned" ? "dropped"
+          : rawStatus;
+        return {
+          id: String(todo?.id ?? index + 1),
+          text: String(todo?.content ?? todo?.text ?? todo?.title ?? ""),
+          status,
+          note: todo?.blocker ? String(todo.blocker) : undefined,
+        };
+      }).filter((todo) => todo.text),
+    })).filter((phase) => phase.items.length);
+  }
+  const direct = details.todos || details.todoPhases || details.items;
+  if (!Array.isArray(direct)) return null;
+  return [{ id: "todos", name: details.title || "Todos", items: direct.map((todo, index) => ({
+    id: String(todo?.id ?? index + 1),
+    text: String(todo?.content ?? todo?.text ?? todo?.title ?? ""),
+    status: String(todo?.status || (todo?.done ? "done" : "pending")),
+  })).filter((todo) => todo.text) }];
+}
+
+function todosFromDetails(details) {
+  const phases = todoPhasesFromDetails(details);
+  return phases ? phases.flatMap((phase) => phase.items) : null;
 }
 
 
@@ -107,6 +125,7 @@ export class Conversation {
     this.sessionName = "";
     this.plan = null;
     this.todos = null;
+    this.queue = { steering: [], followUp: [] };
     this.approval = null;
     this.compacting = false;
     this.retry = null;
@@ -430,6 +449,13 @@ export class Conversation {
         this.thinkingLevel = event.level;
         this.touch();
         break;
+      case "queue_update":
+        this.queue = {
+          steering: Array.isArray(event.steering) ? event.steering : [],
+          followUp: Array.isArray(event.followUp) ? event.followUp : [],
+        };
+        this.touch();
+        break;
       case "session_info_changed":
         this.sessionName = event.name || "";
         this.touch();
@@ -507,9 +533,9 @@ export class Conversation {
   }
 
   noteTodos(details) {
-    const todos = todosFromDetails(details);
-    if (!todos) return;
-    this.todos = { items: todos, at: Date.now() };
+    const phases = todoPhasesFromDetails(details);
+    if (!phases) return;
+    this.todos = { items: phases.flatMap((phase) => phase.items), phases, at: Date.now() };
     this.touch();
   }
 

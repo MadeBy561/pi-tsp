@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { SurfaceDoc, TspInbound, TspLink, TEXT_KINDS } from "./tsp.mjs";
 import { PiRpc } from "./rpc.mjs";
 import { Composer } from "./keys.mjs";
-import { Conversation, fmtModel } from "./state.mjs";
+import { Conversation, fmtModel, textOf } from "./state.mjs";
 import { BUILD, THEME, TEXT_CSS, buildView, STYLESHEET, clock, firstLine, humanMs, humanTokens, spans } from "./view.mjs";
 import { listSessions, sessionPath } from "./sessions.mjs";
 import { configDir, sessionDir } from "./setup.mjs";
@@ -440,6 +440,14 @@ export class PiTsp {
       this.submit(this.composer.text);
       return;
     }
+    if (act === "queue-edit") {
+      this.editQueue();
+      return;
+    }
+    if (act === "fork") {
+      this.openForkPicker();
+      return;
+    }
     if (act === "delete") {
       this.armDeleteSession();
       return;
@@ -591,6 +599,8 @@ export class PiTsp {
       { name: "implement", description: "Execute the current plan", source: "pi-tsp" },
       { name: "agents", description: "List subagents and transcripts", source: "pi-tsp" },
       { name: "todos", description: "Show the current todo board", source: "pi-tsp" },
+      { name: "tree", description: "Browse the session tree and fork", source: "pi-tsp" },
+      { name: "fork", description: "Fork from an earlier message", source: "pi-tsp" },
       { name: "copy", description: "Copy a message or answer", source: "pi-tsp" },
       { name: "attach", description: "Attach an image: /attach <path>", source: "pi-tsp" },
       { name: "compact", description: "Compact the conversation", source: "pi-tsp" },
@@ -617,7 +627,7 @@ export class PiTsp {
     this.menuSelected = 0;
     const command = this.allCommands().find((entry) => entry.name === name);
     if (!command) return;
-    if (["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "copy", "attach", "compact", "help", "quit"].includes(name)) {
+    if (["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "tree", "fork", "copy", "attach", "compact", "help", "quit"].includes(name)) {
       this.localCommand(name, "");
     } else {
       this.prompt(`/${name}`);
@@ -653,6 +663,10 @@ export class PiTsp {
       case "todos":
         this.showTodos();
         return;
+      case "tree":
+      case "fork":
+        this.openForkPicker();
+        return;
       case "copy":
         this.openCopyPicker();
         return;
@@ -681,7 +695,7 @@ export class PiTsp {
     this.menuSelected = 0;
     if (text.startsWith("/")) {
       const [word, ...rest] = text.slice(1).split(/\s+/);
-      const local = ["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "copy", "attach", "compact", "help", "quit"];
+      const local = ["clear", "resume", "model", "effort", "plan", "implement", "agents", "todos", "tree", "fork", "copy", "attach", "compact", "help", "quit"];
       if (local.includes(word)) {
         this.localCommand(word, rest.join(" "));
         return;
@@ -790,6 +804,72 @@ export class PiTsp {
     this.schedule();
   }
 
+  async openForkPicker() {
+    try {
+      const data = await this.rpc.command("get_tree", {}, 15000);
+      this.trace(`TREE data ${JSON.stringify(data).slice(0, 120)}`);
+      const entries = [];
+      const walk = (nodes) => {
+        for (const node of nodes || []) {
+          const entry = node?.entry;
+          if (entry?.type === "message" && (entry.message?.role === "user" || entry.message?.role === "assistant")) {
+            const text = textOf(entry.message.content).replace(/\s+/g, " ").trim();
+            if (text) entries.push({
+              id: entry.id,
+              text,
+              role: entry.message.role,
+              at: entry.message.timestamp || Date.now(),
+            });
+          }
+          walk(node?.children);
+        }
+      };
+      walk(data.tree);
+      this.trace(`TREE entries ${entries.length}`);
+      if (!entries.length) {
+        this.toast("No messages to fork from yet");
+        return;
+      }
+      this.picker = {
+        kind: "fork",
+        title: "Fork from a message",
+        subtitle: `${entries.length} messages · choose a branch point`,
+        icon: "branch",
+        selected: data.leafId || entries[entries.length - 1].id,
+        items: entries.map((entry) => ({
+          id: entry.id,
+          label: entry.text.slice(0, 100),
+          detail: `${entry.role === "user" ? "You" : "pi"} · new branch`,
+          icon: entry.role === "user" ? "user" : "message",
+          dot: entry.role === "assistant" ? "success" : "muted",
+        })),
+        entries,
+      };
+      this.schedule();
+    } catch (error) {
+      this.trace(`TREE error ${error.message}`);
+      this.toast(`could not read the session tree: ${error.message}`, "error");
+    }
+  }
+
+  async forkSession(entryId) {
+    try {
+      const result = await this.rpc.command("fork", { entryId }, 30000);
+      if (result?.cancelled) {
+        this.toast("Fork cancelled");
+        return;
+      }
+      const messages = await this.rpc.command("get_messages", {}, 20000);
+      this.conv.loadMessages(messages.messages || []);
+      const state = await this.rpc.command("get_state", {}, 10000);
+      this.applyState(state);
+      this.toast("Forked a new branch");
+    } catch (error) {
+      this.toast(`fork failed: ${error.message}`, "error");
+    }
+    this.schedule();
+  }
+
   showTodos() {
     const todos = this.conv.todos?.items || [];
     if (!todos.length) {
@@ -811,6 +891,18 @@ export class PiTsp {
       })),
     };
     this.schedule();
+  }
+
+  async editQueue() {
+    try {
+      const data = await this.rpc.command("clear_queue", {}, 10000);
+      const messages = [...(data.steering || []), ...(data.followUp || [])];
+      if (messages.length) this.composer.set(messages.join("\n"));
+      this.conv.queue = { steering: [], followUp: [] };
+      this.schedule();
+    } catch (error) {
+      this.toast(`could not edit queue: ${error.message}`, "error");
+    }
   }
 
   armDeleteSession() {
@@ -980,6 +1072,8 @@ export class PiTsp {
     } else if (picker.kind === "copy") {
       const item = picker.texts?.find((entry) => entry.id === selected);
       if (item) this.copyText(item.text);
+    } else if (picker.kind === "fork") {
+      this.forkSession(selected);
     }
     this.schedule();
   }
@@ -1286,6 +1380,7 @@ export class PiTsp {
       statusExtra: [...this.statusExtras.values()].at(-1) || "",
       composer: this.composer,
       attachments: this.attachments,
+      queue: this.conv.queue,
       menu,
       picker: this.picker,
       approval: this.approval,

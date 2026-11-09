@@ -32,6 +32,13 @@ test("todo details become a checklist board", () => {
   assert.equal(board.p.phases[0].items[0].status, "done");
 });
 
+test("queue updates are kept for the composer", () => {
+  const conv = new Conversation();
+  conv.onEvent({ type: "queue_update", steering: ["do this next"], followUp: ["then summarize"] });
+  assert.deepEqual(conv.queue.steering, ["do this next"]);
+  assert.deepEqual(conv.queue.followUp, ["then summarize"]);
+});
+
 test("buildView renders a user image attachment without throwing", () => {
   const conv = new Conversation();
   conv.addUser("image", [{ type: "image", data: "AAAA", mimeType: "image/png", name: "pixel.png" }]);
