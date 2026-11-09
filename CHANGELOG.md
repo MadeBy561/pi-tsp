@@ -3,6 +3,14 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.16] - 2026-11-09
+
+### Added
+
+- `/trust` opens a project-trust picker and writes pi's `trust.json` for the
+  current working directory. The decision applies on the next pi-tsp launch,
+  matching pi's startup trust resolution.
+
 ## [1.0.15] - 2026-11-09
 
 ### Added

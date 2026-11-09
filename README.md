@@ -76,7 +76,7 @@ stock `pi` with the original arguments.
 | Composer | Centered card, context meter, provider-logo model chip, effort chip, working directory, attachments, queued-message chips, `!` shell mode, `Alt+Enter` follow-up and send button |
 | Commands | `/clear`, `/resume`, `/model`, `/effort`, `/plan`, `/implement`, `/agents`, `/todos`, `/search`, `/rename`, `/name`, `/new`, `/clone`, `/session`, `/thinking`, `/tree`, `/fork`, `/copy`, `/attach`, `/export`, `/import`, `/hotkeys`, `/settings`, `/scoped-models`, `/reload`, `/changelog`, `/compact`, `/help`, `/quit` |
 | Sessions | Resume with preview, pin, rename, delete with confirmation, clone, import/export and tree/fork navigation |
-| Settings | Native picker for auto-compaction, auto-retry, steering, follow-up and model/thinking |
+| Settings | Native picker for auto-compaction, auto-retry, steering, follow-up and model/thinking; project `/trust` persistence |
 | Copy | Copy a message/answer, a code block, or choose from a preview picker |
 | Images | `/attach <path>` queues a png/jpg/gif/webp for the next prompt |
 | Fallback | Outside Tern, `-p`, `--version` or a non-text mode runs stock `pi` |
@@ -120,8 +120,8 @@ pi-tsp
 Or install a release tarball:
 
 ```sh
-gh release download v1.0.15 --repo MadeBy561/pi-tsp --pattern '*.tgz'
-npm install -g ./pi-tsp-1.0.15.tgz
+gh release download v1.0.16 --repo MadeBy561/pi-tsp --pattern '*.tgz'
+npm install -g ./pi-tsp-1.0.16.tgz
 pi-tsp
 ```
 

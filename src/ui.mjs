@@ -6,7 +6,7 @@
  * the conversation model. Keys come back on the same pty, TSP events are
  * peeled off first.
  */
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { SurfaceDoc, TspInbound, TspLink, TEXT_KINDS } from "./tsp.mjs";
@@ -786,6 +786,7 @@ export class PiTsp {
       { name: "hotkeys", description: "Show keyboard shortcuts", source: "pi-tsp" },
       { name: "search", description: "Search the transcript: /search <text>", source: "pi-tsp" },
       { name: "settings", description: "Show available pi settings commands", source: "pi-tsp" },
+      { name: "trust", description: "Save project trust for the next launch", source: "pi-tsp" },
       { name: "scoped-models", description: "Choose the model for Ctrl+P cycling", source: "pi-tsp" },
       { name: "reload", description: "Reload instructions, extensions and themes", source: "pi-tsp" },
       { name: "changelog", description: "Show the pi-tsp build version", source: "pi-tsp" },
@@ -817,7 +818,7 @@ export class PiTsp {
     this.menuSelected = 0;
     const command = this.allCommands().find((entry) => entry.name === name);
     if (!command) return;
-    if (["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "search", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"].includes(name)) {
+    if (["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "search", "attach", "export", "import", "hotkeys", "settings", "trust", "scoped-models", "reload", "changelog", "compact", "help", "quit"].includes(name)) {
       this.localCommand(name, "");
     } else {
       this.prompt(`/${name}`);
@@ -882,6 +883,9 @@ export class PiTsp {
       case "settings":
         this.openSettingsPicker();
         return;
+      case "trust":
+        this.openTrustPicker();
+        return;
       case "scoped-models":
         this.openModelPicker();
         return;
@@ -932,7 +936,7 @@ export class PiTsp {
     }
     if (text.startsWith("/")) {
       const [word, ...rest] = text.slice(1).split(/\s+/);
-      const local = ["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "search", "attach", "export", "import", "hotkeys", "settings", "scoped-models", "reload", "changelog", "compact", "help", "quit"];
+      const local = ["clear", "new", "clone", "session", "resume", "model", "effort", "thinking", "plan", "implement", "agents", "todos", "rename", "name", "tree", "fork", "copy", "search", "attach", "export", "import", "hotkeys", "settings", "trust", "scoped-models", "reload", "changelog", "compact", "help", "quit"];
       if (local.includes(word)) {
         this.localCommand(word, rest.join(" "));
         return;
@@ -1573,6 +1577,57 @@ export class PiTsp {
     }
   }
 
+  trustPath() {
+    return join(configDir(), "trust.json");
+  }
+
+  trustDecision() {
+    try {
+      const data = JSON.parse(readFileSync(this.trustPath(), "utf8"));
+      let current = resolve(this.cwd);
+      while (true) {
+        if (data[current] === true) return true;
+        if (data[current] === false) return false;
+        const parent = dirname(current);
+        if (parent === current) return null;
+        current = parent;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  openTrustPicker() {
+    const decision = this.trustDecision();
+    this.picker = {
+      kind: "trust",
+      title: "Project trust",
+      subtitle: `${this.cwd} · ${decision === true ? "trusted" : decision === false ? "blocked" : "not set"}`,
+      icon: "shield",
+      selected: decision === false ? "off" : "on",
+      items: [
+        { id: "on", label: "Trust this project", detail: "allow project settings, extensions and packages", icon: "shield", dot: decision === true ? "success" : "muted" },
+        { id: "off", label: "Do not trust", detail: "block project-local resources", icon: "shield-alert", dot: decision === false ? "error" : "muted" },
+      ],
+    };
+    this.schedule();
+  }
+
+  applyTrust(decision) {
+    try {
+      let data = {};
+      try { data = JSON.parse(readFileSync(this.trustPath(), "utf8")); } catch { data = {}; }
+      data[resolve(this.cwd)] = decision === "on";
+      mkdirSync(dirname(this.trustPath()), { recursive: true });
+      writeFileSync(this.trustPath(), JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
+      this.picker = null;
+      this.toast(`Project trust ${decision === "on" ? "enabled" : "disabled"} · applies on next launch`);
+      this.schedule();
+    } catch (error) {
+      this.toast(`trust update failed: ${error.message}`, "error");
+    }
+  }
+
   openSettingsPicker() {
     const onOff = (value) => (value ? "On" : "Off");
     this.picker = {
@@ -1720,6 +1775,8 @@ export class PiTsp {
       this.useTreeEntry(selected, picker.entries);
     } else if (picker.kind === "settings") {
       this.openSettingsChoice(selected);
+    } else if (picker.kind === "trust") {
+      this.applyTrust(selected);
     }
     this.schedule();
   }
