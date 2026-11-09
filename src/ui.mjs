@@ -13,7 +13,7 @@ import { SurfaceDoc, TspInbound, TspLink, TEXT_KINDS } from "./tsp.mjs";
 import { PiRpc } from "./rpc.mjs";
 import { Composer } from "./keys.mjs";
 import { Conversation, fmtModel, textOf } from "./state.mjs";
-import { BUILD, THEME, TEXT_CSS, buildView, STYLESHEET, clock, firstLine, humanMs, humanTokens, spans } from "./view.mjs";
+import { BUILD, THEME, TEXT_CSS, buildView, STYLESHEET, clock, firstLine, humanMs, humanTokens, spans, providerIcon } from "./view.mjs";
 import { listSessions, sessionPath } from "./sessions.mjs";
 import { configDir, sessionDir } from "./setup.mjs";
 
@@ -1449,6 +1449,7 @@ export class PiTsp {
       id: `${model.provider}/${model.id}`,
       label: model.name || model.id,
       detail: `${model.provider} · ${(model.contextWindow / 1000).toFixed(0)}k ctx${model.reasoning ? " · reasoning" : ""}`,
+      icon: providerIcon(model.provider, model.id),
       dot: model.id === this.conv.model ? "success" : "muted",
       mono: true,
     }));
@@ -1460,7 +1461,7 @@ export class PiTsp {
       kind: "model",
       title: "Switch model",
       subtitle: "applies to the running session",
-      icon: "sparkles",
+      icon: providerIcon(this.conv.provider, this.conv.model),
       selected: this.models.find((model) => model.id === this.conv.model)
         ? `${this.models.find((model) => model.id === this.conv.model).provider}/${this.conv.model}`
         : models[0].id,
@@ -1839,6 +1840,7 @@ export class PiTsp {
     ) || this.models.find((model) => model.id === this.conv.model);
     return {
       model: this.conv.model,
+      provider: this.conv.provider,
       modelLabel: fmtModel(current?.name || this.conv.model || "") || fmtModel(this.conv.model || ""),
       effort: this.effort,
       compact: this.compact,

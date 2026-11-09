@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.9+2026.11.09";
+export const BUILD = "pit-1.0.10+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -866,7 +866,7 @@ export function composer(conv, ctx) {
   const modelName = ctx.modelLabel || fmtModel(ctx.model || conv.model || "");
   const chips = [];
   chips.push(id(n("row", { role: "pit.chip", tone: "accent", gap: "xs", align: "center", title: `Model: ${modelName}`, actions: { click: "model" } }, [
-    id(n("icon", { name: "sparkles", tone: "accent" }), "chip.model.ic"),
+    id(n("icon", { name: providerIcon(ctx.provider, ctx.model), tone: "accent" }), "chip.model.ic"),
     id(n("text", { spans: [{ t: ctx.compact ? shortModel(modelName) : modelName, s: "accent" }], truncate: "end" }), "chip.model.t"),
     ctx.compact ? null : id(n("icon", { name: "chev" }), "chip.model.ch"),
   ]), "chip.model"));
@@ -994,6 +994,31 @@ export function renderSlashMenu(ctx) {
     ]), `menu.i${index}`);
   });
   return id(n("col", { gap: "none", role: "pit.menu" }, rows), "menu");
+}
+
+/** Provider icons that Tern ships for the model picker and composer. */
+export function providerKey(provider = "", model = "") {
+  const p = String(provider || "").toLowerCase();
+  const id = String(model || "").toLowerCase();
+  if (p.includes("deepseek") || id.includes("deepseek")) return "deepseek";
+  if (p === "zai" || p.includes("z.ai") || p.includes("z-ai")) return "zai";
+  if (p.includes("zhipu") || p.includes("glm") || id.includes("glm")) return "zhipu-coding-plan";
+  if (p.includes("anthropic")) return "anthropic";
+  if (p.includes("openai") || p.includes("codex")) return "openai";
+  if (p.includes("google") || p.includes("gemini") || p.includes("vertex")) return "google";
+  if (p.includes("xai") || p.includes("x.ai")) return "xai";
+  if (p.includes("moonshot") || p.includes("kimi")) return "moonshot";
+  if (p.includes("qwen") || p.includes("alibaba")) return "qwen-portal";
+  if (p.includes("openrouter")) return "openrouter";
+  if (p.includes("groq")) return "groq";
+  if (p.includes("ollama")) return "ollama";
+  if (p.includes("mistral")) return "mistral";
+  return "";
+}
+
+export function providerIcon(provider = "", model = "") {
+  const key = providerKey(provider, model);
+  return key ? `provider:${key}` : "sparkles";
 }
 
 export function shortModel(model = "") {

@@ -73,7 +73,7 @@ stock `pi` with the original arguments.
 | Approvals | Permission sheets with allow/deny, forwarded to the real pi permission flow |
 | Plan mode | A native checklist and an Implement action |
 | Pickers | Model and thinking-effort pickers that call pi's RPC state, not a fake label |
-| Composer | Centered card, context meter, model/effort chips, working directory, attachments, queued-message chips, `!` shell mode, `Alt+Enter` follow-up and send button |
+| Composer | Centered card, context meter, provider-logo model chip, effort chip, working directory, attachments, queued-message chips, `!` shell mode, `Alt+Enter` follow-up and send button |
 | Commands | `/clear`, `/resume`, `/model`, `/effort`, `/plan`, `/implement`, `/agents`, `/todos`, `/rename`, `/name`, `/new`, `/clone`, `/session`, `/thinking`, `/tree`, `/fork`, `/copy`, `/attach`, `/export`, `/import`, `/hotkeys`, `/settings`, `/scoped-models`, `/reload`, `/changelog`, `/compact`, `/help`, `/quit` |
 | Sessions | Resume with preview, pin, rename, delete with confirmation, clone, import/export and tree/fork navigation |
 | Copy | Copy a message/answer, a code block, or choose from a preview picker |
@@ -119,8 +119,8 @@ pi-tsp
 Or install a release tarball:
 
 ```sh
-gh release download v1.0.9 --repo MadeBy561/pi-tsp --pattern '*.tgz'
-npm install -g ./pi-tsp-1.0.9.tgz
+gh release download v1.0.10 --repo MadeBy561/pi-tsp --pattern '*.tgz'
+npm install -g ./pi-tsp-1.0.10.tgz
 pi-tsp
 ```
 

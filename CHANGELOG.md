@@ -3,6 +3,15 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.10] - 2026-11-09
+
+### Added
+
+- Provider-aware model logos in the composer and model picker. DeepSeek,
+  Z.ai/Zhipu GLM, Anthropic, OpenAI, Google, xAI, Moonshot, Qwen, OpenRouter,
+  Groq, Ollama and Mistral aliases resolve to Tern's `provider:<id>` icons;
+  unknown providers keep the generic sparkles icon.
+
 ## [1.0.9] - 2026-11-09
 
 ### Changed
