@@ -3,6 +3,14 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.18] - 2026-11-09
+
+### Fixed
+
+- `Ctrl+C` now uses a forgiving double-tap exit window: the first press clears
+  or aborts and shows `Ctrl+C again to exit`; the second exits. Overlays consume
+  Ctrl+C as cancel, and raw pty control bytes are handled before TSP decoding.
+
 ## [1.0.17] - 2026-11-09
 
 ### Changed

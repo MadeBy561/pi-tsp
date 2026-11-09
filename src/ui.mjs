@@ -82,6 +82,7 @@ export class PiTsp {
     this.toastSeq = 0;
     this.notifySeq = 0;
     this.notifyPending = false;
+    this.lastSigintTime = 0;
     this.lastPromptAt = 0;
     this.ttftLogged = false;
     this.firstTokenPainted = false;
@@ -355,6 +356,12 @@ export class PiTsp {
   }
 
   onInput(chunk) {
+    // Tern can deliver Ctrl+C as a raw byte before the TSP key decoder sees it.
+    // Handle it once here so the double-tap works identically in both paths.
+    if (String(chunk).includes("\x03")) {
+      this.handleCtrlC();
+      return;
+    }
     const { events, keys } = this.inbound.feed(String(chunk));
     for (const { verb, body } of events) {
       if (verb === "e") this.onTspEvent(body);
@@ -421,6 +428,29 @@ export class PiTsp {
       default:
         return;
     }
+  }
+
+  handleCtrlC() {
+    if (this.killed || this.stopping) return;
+    if (this.picker) {
+      this.picker = null;
+      this.schedule();
+      return;
+    }
+    if (this.approval) {
+      this.answerApproval(this.approval.options?.[this.approval.options.length - 1] || "Deny");
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastSigintTime < 1500) {
+      this.shutdown("Ctrl+C");
+      return;
+    }
+    this.lastSigintTime = now;
+    if (this.conv.busy) this.abort();
+    else if (this.composer.text) this.composer.clear();
+    this.toast("Ctrl+C again to exit");
+    this.schedule();
   }
 
   onKeys(data) {
@@ -564,9 +594,7 @@ export class PiTsp {
       return;
     }
     if (result.ctrlC) {
-      if (this.conv.busy) this.abort();
-      else if (this.composer.text) this.composer.clear();
-      this.schedule();
+      this.handleCtrlC();
       return;
     }
     if (result.interrupt) {
