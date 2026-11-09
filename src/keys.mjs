@@ -57,7 +57,7 @@ export class Composer {
    * menuUp, menuDown, changed } so the UI can decide what they mean.
    */
   feed(data) {
-    const out = { submit: null, interrupt: false, escape: false, tab: false, ctrlC: false, menuUp: false, menuDown: false, changed: false };
+    const out = { submit: null, interrupt: false, escape: false, tab: false, ctrlC: false, menuUp: false, menuDown: false, changed: false, paste: undefined };
     const text = data.toString("utf8");
     let index = 0;
     while (index < text.length) {
@@ -69,6 +69,7 @@ export class Composer {
           continue;
         }
         this.pasteBuffer += text.slice(index, end);
+        out.paste = this.pasteBuffer;
         this.insert(this.pasteBuffer);
         this.pasteBuffer = "";
         this.pasting = false;

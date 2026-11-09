@@ -3,6 +3,20 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.23] - 2026-11-09
+
+### Added
+
+- `Ctrl+V` / `Cmd+V` clipboard image paste. The surface reads the host
+  clipboard directly (`wl-paste`/`xclip`/`xsel` on Linux, the macOS
+  pasteboard, PowerShell on Windows), stages the image in the composer with
+  a thumbnail and detach chip, and sends it through pi's native `prompt`
+  image blocks.
+- Empty clipboard paste opens the image path; plain text falls back to a
+  normal paste when the clipboard has no image.
+- Image file paths pasted into the composer are attached as images.
+- `/attach` now uses the same image reader and MIME validation.
+
 ## [1.0.22] - 2026-11-09
 
 ### Changed

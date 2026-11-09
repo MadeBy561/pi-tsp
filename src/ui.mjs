@@ -14,6 +14,7 @@ import { PiRpc } from "./rpc.mjs";
 import { Composer } from "./keys.mjs";
 import { Conversation, fmtModel, textOf } from "./state.mjs";
 import { BUILD, THEME, TEXT_CSS, buildView, STYLESHEET, clock, firstLine, humanMs, humanTokens, spans, providerIcon } from "./view.mjs";
+import { isImagePath, readClipboardImage, readClipboardText, readImageFile } from "./clipboard.mjs";
 import { listSessions, sessionPath } from "./sessions.mjs";
 import { configDir, sessionDir } from "./setup.mjs";
 
@@ -59,6 +60,7 @@ export class PiTsp {
     this.toasts = [];
     this.menuSelected = 0;
     this.attachments = [];
+    this.clipboardBusy = false;
     this.blobCache = new Map();
     this.imageCache = new Map();
     this.statusExtras = new Map();
@@ -474,6 +476,10 @@ export class PiTsp {
 
   onKeys(data) {
     if (this.killed) return;
+    if (String(data) === "\x16") {
+      this.pasteClipboard();
+      return;
+    }
     if (String(data) === "\x1b\r") {
       const text = this.composer.text.trim();
       if (!text) return;
@@ -553,7 +559,21 @@ export class PiTsp {
       this.shutdown("Ctrl+D");
       return;
     }
+    const beforeText = this.composer.text;
+    const beforeCursor = this.composer.cursor;
     const result = this.composer.feed(data);
+    if (result.paste !== undefined) {
+      if (!result.paste.trim()) {
+        this.composer.set(beforeText, beforeCursor);
+        this.pasteClipboard();
+      } else if (isImagePath(result.paste)) {
+        this.composer.set(beforeText, beforeCursor);
+        this.attach(result.paste);
+      } else {
+        this.schedule();
+      }
+      return;
+    }
     if (this.picker) {
       if (result.submit != null) {
         this.choosePicker();
@@ -1913,6 +1933,43 @@ export class PiTsp {
     this.schedule();
   }
 
+  addImageAttachment(image) {
+    if (!image) return false;
+    if (this.attachments.length >= 8) {
+      this.toast("Maximum 8 images per prompt", "warning");
+      return false;
+    }
+    this.attachments.push(image);
+    this.toast(`Attached ${image.name || "image"} (${this.attachments.length} queued)`);
+    this.schedule();
+    return true;
+  }
+
+  pasteClipboard() {
+    if (this.clipboardBusy) return;
+    this.clipboardBusy = true;
+    try {
+      const image = readClipboardImage();
+      if (image) {
+        this.addImageAttachment(image);
+        return;
+      }
+      const text = readClipboardText();
+      if (text && isImagePath(text)) {
+        this.attach(text);
+        return;
+      }
+      if (text) {
+        this.composer.insert(text);
+        this.schedule();
+        return;
+      }
+      this.toast("Clipboard has no image or text", "warning");
+    } finally {
+      this.clipboardBusy = false;
+    }
+  }
+
   attach(path) {
     if (!path) {
       this.toast("usage: /attach <path to image>");
@@ -1923,16 +1980,13 @@ export class PiTsp {
       this.toast(`not found: ${path}`, "warning");
       return;
     }
-    const ext = extname(full).toLowerCase();
-    if (![".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext)) {
+    const image = readImageFile(full);
+    if (!image) {
       this.toast("only png/jpg/gif/webp can be attached", "warning");
       return;
     }
-    const data = readFileSync(full).toString("base64");
-    const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".gif" ? "image/gif" : ext === ".webp" ? "image/webp" : "image/png";
-    this.attachments.push({ type: "image", data, mimeType: mime, name: basename(full) });
-    this.toast(`Attached ${basename(full)} (${this.attachments.length} queued)`);
-    this.schedule();
+    image.name = basename(full);
+    this.addImageAttachment(image);
   }
 
   showHelp() {
@@ -1951,6 +2005,7 @@ export class PiTsp {
         { id: "esc", label: "Esc", detail: "close a modal, dismiss the menu, or interrupt a run" },
         { id: "ctrld", label: "Ctrl+D", detail: "delete the selected session from /resume (confirmation required)" },
         { id: "ctrl-c", label: "Ctrl+C", detail: "interrupt a run, or clear the draft" },
+        { id: "ctrlv", label: "Ctrl+V / Cmd+V", detail: "paste an image from the clipboard, or text as a fallback" },
         { id: "up", label: "↑ / ↓", detail: "history when the menu is closed" },
       ],
       help: true,

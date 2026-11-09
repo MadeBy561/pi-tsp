@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.22+2026.11.09";
+export const BUILD = "pit-1.0.23+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -953,6 +953,15 @@ export function composer(conv, ctx) {
     id(n("text", { spans: [{ t: `${humanTokens(ctx.contextTokens || 0)} / ${humanTokens(ctx.contextWindow || 0)}`, s: "dim" }] }), "composer.ctx.r"),
   ]), "composer.meterrow");
 
+  const attachmentPreview = ctx.attachments?.length
+    ? id(n("row", { gap: "sm", align: "center", role: "pit.attachpreview", wrap: false }, ctx.attachments.map((attachment, index) => {
+      const blob = ctx.blobFor?.(attachment.data, attachment.mimeType);
+      return id(blob
+        ? n("image", { blob, alt: attachment.name || `image ${index + 1}`, w: 72 })
+        : n("text", { spans: [{ t: `#${index + 1}`, s: "info" }] }), `composer.attach${index}.thumb`);
+    })), "composer.attachpreview")
+    : null;
+
   const statusBits = [];
   if (conv.busy) statusBits.push({ t: conv.compacting ? "compacting" : "working", s: "accent" });
   else if (ctx.approval) statusBits.push({ t: "needs your answer", s: "warning" });
@@ -976,6 +985,7 @@ export function composer(conv, ctx) {
           ctx.compact ? null : meterRow,
           queueRows(ctx),
           menu,
+          attachmentPreview,
           editor,
           id(n("row", { gap: "xs", align: "center", role: "pit.chiprow", wrap: false }, chips), "composer.chiprow"),
         ]), "composer.body"),
@@ -1093,7 +1103,7 @@ export const STYLESHEET = `
 [data-role="pit.stream"] .sf-md p:last-child,[data-role="pit.stream"] .md p:last-child{margin-bottom:0}
 [data-role="pit.stream"] .sf-md ul,[data-role="pit.stream"] .sf-md ol,
 [data-role="pit.stream"] .md ul,[data-role="pit.stream"] .md ol{
-  padding-left:1.9em!important;padding-inline-start:1.9em!important;margin:.35em 0 .7em!important}
+  padding-left:1.9em!important;margin:.35em 0 .7em!important}
 [data-role="pit.stream"] .sf-md li,[data-role="pit.stream"] .md li{
   padding-left:.15em;overflow:visible}
 [data-role="pit.stream"] .sf-md li::marker,[data-role="pit.stream"] .md li::marker{overflow:visible}
