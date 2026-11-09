@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.8] - 2026-11-09
+
+### Added
+
+- `Alt+Enter` queues a follow-up and `Alt+Up` restores queued messages.
+- `--resume` is passed through to pi alongside the other native CLI flags.
+
 ## [1.0.7] - 2026-11-09
 
 ### Added

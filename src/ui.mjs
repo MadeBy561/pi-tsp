@@ -155,7 +155,7 @@ export class PiTsp {
     // Interactive-only flags pi's RPC mode understands.
     const pass = new Set([
       "--provider", "--model", "--thinking", "--session", "--name", "--models",
-      "--no-session", "--continue", "--api-key", "--fork", "--session-id",
+      "--no-session", "--continue", "--resume", "--api-key", "--fork", "--session-id",
       "--extension", "--skill", "--prompt-template", "--theme", "--use-theme",
       "--tools", "--exclude-tools", "--no-tools", "--no-builtin-tools", "--no-mcp",
       "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes",
@@ -387,6 +387,22 @@ export class PiTsp {
 
   onKeys(data) {
     if (this.killed) return;
+    if (String(data) === "\x1b\r") {
+      const text = this.composer.text.trim();
+      if (!text) return;
+      this.rpc.command("follow_up", { message: text }, 15000).then(() => {
+        this.lastUserText = text;
+        this.composer.clear();
+        this.toast("Queued after the current turn");
+        this.schedule();
+      }).catch((error) => this.toast(`queue failed: ${error.message}`, "error"));
+      return;
+    }
+    if (String(data) === "\x1b[1;3A") {
+      if (this.conv.queue?.steering?.length || this.conv.queue?.followUp?.length) this.editQueue();
+      else this.composer.recall(-1);
+      return;
+    }
     if (this.fieldDialog) {
       const field = this.fieldInput.feed(data);
       this.fieldDialog.text = this.fieldInput.text;
