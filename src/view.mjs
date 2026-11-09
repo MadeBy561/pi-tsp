@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.16+2026.11.09";
+export const BUILD = "pit-1.0.17+2026.11.09";
 
 export const THEME = {
   dark: {
@@ -1046,7 +1046,10 @@ export function shortPath(path = "") {
 /** Build the three regions. */
 export function buildView(conv, ctx) {
   const empty = conv.items.length === 0;
-  const transcript = empty ? [splash(conv, ctx)] : [...renderTranscript(conv, ctx)];
+  // omp's welcome lockup retires into transcript history instead of vanishing
+  // on the first prompt. Keep a compact brand row at the top of an active
+  // transcript for the same continuity.
+  const transcript = empty ? [splash(conv, ctx)] : [brandBar(conv, ctx), ...renderTranscript(conv, ctx)];
   const plan = renderPlan(conv, ctx);
   if (plan) transcript.push(plan);
   const todos = renderTodos(conv, ctx);
@@ -1075,7 +1078,9 @@ export function buildView(conv, ctx) {
 
 export const STYLESHEET = `
 .sf-region.sf-main [data-role="pit.stream"]{max-width:860px;margin:0 auto;padding:4px 2px 12px}
-[data-role="pit.brandbar"]{padding:2px 2px 0;opacity:.95}
+[data-role="pit.brandbar"]{padding:6px 4px 0;opacity:1}
+[data-role="pit.brandbar"] [data-role="pit.badge"]{width:26px;height:26px;border-radius:9px;font-size:16px}
+[data-role="pit.brandbar"] [data-role="pit.wordmark"]{font-size:1.05em;letter-spacing:-.02em}
 [data-role="pit.badge"]{display:inline-flex;align-items:center;justify-content:center;
   width:24px;height:24px;border-radius:8px;background:linear-gradient(145deg,#7C5CFF,#22D3EE);
   color:#fff;font-weight:700;font-size:15px;box-shadow:0 2px 10px rgba(124,92,255,.35)}
@@ -1115,7 +1120,7 @@ export const STYLESHEET = `
 [data-role="pit.answer"] .md code, [data-role="pit.answer"] .md pre,
 [data-role="pit.user"] .md code, [data-role="pit.user"] .md pre{
   font-family:"SF Mono","Berkeley Mono",monospace!important;font-size:13px!important}
-[data-role="pit.user"]{padding:0!important}
+[data-role="pit.user"]{padding:0!important;border-radius:18px!important}
 [data-role="pit.user"] .sf-card-body{padding:10px 16px!important}
 [data-role="pit.usermeta"]{padding:2px 2px 0 0}
 [data-role="pit.usermeta"] .sf-text{font-size:11px!important}

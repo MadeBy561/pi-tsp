@@ -3,6 +3,15 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.17] - 2026-11-09
+
+### Changed
+
+- The compact pi lockup now remains at the top of an active transcript,
+  matching omp's welcome lockup retiring into history on the first prompt.
+- User bubbles use a softer 18px radius; the brand row and model chip spacing
+  were tightened for a quieter active-chat header.
+
 ## [1.0.16] - 2026-11-09
 
 ### Added

@@ -120,8 +120,8 @@ pi-tsp
 Or install a release tarball:
 
 ```sh
-gh release download v1.0.16 --repo MadeBy561/pi-tsp --pattern '*.tgz'
-npm install -g ./pi-tsp-1.0.16.tgz
+gh release download v1.0.17 --repo MadeBy561/pi-tsp --pattern '*.tgz'
+npm install -g ./pi-tsp-1.0.17.tgz
 pi-tsp
 ```
 
