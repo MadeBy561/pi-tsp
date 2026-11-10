@@ -65,7 +65,8 @@ export function toolNamesInSource(source = "") {
 }
 
 /**
- * Every tool name the extensions under `dirs` register.
+ * Every tool name the extensions at `roots` register. A root may be a
+ * directory or a single extension file, and symlinks are followed.
  *
  * pi treats a duplicate tool name as an extension load error, and it takes the
  * session down with it — a pi setup that already has a hand-rolled `todo` tool
@@ -73,8 +74,19 @@ export function toolNamesInSource(source = "") {
  * extension cannot ask what is registered while it is still loading), so the
  * surface reads the files on disk before it spawns pi.
  */
-export function toolNamesRegisteredUnder(dirs = [], { depth = 2, maxBytes = 256 * 1024 } = {}) {
+export function toolNamesRegisteredUnder(roots = [], { depth = 2, maxBytes = 256 * 1024 } = {}) {
   const names = new Set();
+  const readNames = (path, target) => {
+    if (!/\.(ts|js|mjs|cjs)$/.test(path)) return;
+    let source;
+    try {
+      if (target.size > maxBytes) return;
+      source = readFileSync(path, "utf8");
+    } catch {
+      return;
+    }
+    for (const name of toolNamesInSource(source)) names.add(name);
+  };
   const visit = (dir, level) => {
     let entries;
     try {
@@ -84,21 +96,31 @@ export function toolNamesRegisteredUnder(dirs = [], { depth = 2, maxBytes = 256 
     }
     for (const entry of entries) {
       const path = join(dir, entry.name);
-      if (entry.isDirectory() || entry.isSymbolicLink()) {
+      let target;
+      try {
+        // stat (not lstat) follows a symlink: users commonly link a single
+        // extension file from a dotfiles directory, and those files must be
+        // scanned just like real ones.
+        target = statSync(path);
+      } catch {
+        continue; // broken symlink or unreadable entry
+      }
+      if (target.isDirectory()) {
         if (level < depth && entry.name !== "node_modules") visit(path, level + 1);
         continue;
       }
-      if (!/\.(ts|js|mjs|cjs)$/.test(entry.name)) continue;
-      let source;
-      try {
-        if (statSync(path).size > maxBytes) continue;
-        source = readFileSync(path, "utf8");
-      } catch {
-        continue;
-      }
-      for (const name of toolNamesInSource(source)) names.add(name);
+      readNames(path, target);
     }
   };
-  for (const dir of dirs) visit(dir, 0);
+  for (const entry of roots) {
+    let target;
+    try {
+      target = statSync(entry);
+    } catch {
+      continue;
+    }
+    if (target.isDirectory()) visit(entry, 0);
+    else readNames(entry, target);
+  }
   return names;
 }

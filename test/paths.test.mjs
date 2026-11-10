@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { encodeCwd, stockPath, subagentTaskDirs, toolNamesInSource, toolNamesRegisteredUnder } from "../src/paths.mjs";
@@ -49,7 +49,7 @@ test("toolNamesInSource reads registrations without importing the file", () => {
   assert.equal(toolNamesInSource('pi.registerCommand("clear")').size, 0);
 });
 
-test("toolNamesRegisteredUnder finds nested and symlinked extensions", () => {
+test("toolNamesRegisteredUnder finds nested extensions", () => {
   const root = mkdtempSync(join(tmpdir(), "pi-tsp-ext-"));
   writeFileSync(join(root, "own.ts"), 'pi.registerTool({ name: "todo" });');
   mkdirSync(join(root, "sub"));
@@ -58,4 +58,13 @@ test("toolNamesRegisteredUnder finds nested and symlinked extensions", () => {
   mkdirSync(linked);
   writeFileSync(join(linked, "guard.ts"), 'pi.registerFlag("guard-mode", {});');
   assert.deepEqual([...toolNamesRegisteredUnder([join(root, "does-not-exist"), root])].sort(), ["todo", "websearch"]);
+});
+
+test("toolNamesRegisteredUnder reads a symlinked extension file", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-tsp-ext-link-"));
+  const targetDir = mkdtempSync(join(tmpdir(), "pi-tsp-ext-target-"));
+  const target = join(targetDir, "todo.ts");
+  writeFileSync(target, 'pi.registerTool({ name: "todo" });');
+  symlinkSync(target, join(root, "todo.ts"));
+  assert.deepEqual([...toolNamesRegisteredUnder([root])], ["todo"]);
 });

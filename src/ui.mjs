@@ -155,6 +155,29 @@ export class PiTsp {
     return stockPath();
   }
 
+  extensionScanRoots() {
+    const roots = [
+      join(this.cwd, ".pi", "extensions"),
+      join(configDir(), "extensions"),
+    ];
+    // The launcher forwards these to pi, so a collision can also come from an
+    // explicitly supplied extension file or directory. Resolve relative paths
+    // against the same cwd the child will use.
+    const args = Array.isArray(this.args) ? [...this.args] : [];
+    const extra = process.env.PI_TSP_EXTRA_ARGS;
+    if (extra) args.push(...extra.split(" ").filter(Boolean));
+    for (let index = 0; index < args.length; index += 1) {
+      const arg = args[index];
+      if (arg === "--extension" && index + 1 < args.length) {
+        roots.push(resolve(this.cwd, args[++index]));
+      } else if (arg.startsWith("--extension=")) {
+        const value = arg.slice("--extension=".length);
+        if (value) roots.push(resolve(this.cwd, value));
+      }
+    }
+    return roots;
+  }
+
   extensionPaths() {
     const here = dirname(new URL(import.meta.url).pathname);
     const ours = [
@@ -167,10 +190,7 @@ export class PiTsp {
     // dies with it: a setup that already has its own `todo` extension cannot also
     // load ours. An extension cannot see what is registered while it is still
     // loading, so the collision is settled here, from the files on disk.
-    const taken = toolNamesRegisteredUnder([
-      join(this.cwd, ".pi", "extensions"),
-      join(configDir(), "extensions"),
-    ]);
+    const taken = toolNamesRegisteredUnder(this.extensionScanRoots());
     if (!taken.size) return ours;
     return ours.filter((path) => {
       let own;
@@ -255,7 +275,10 @@ export class PiTsp {
         this.conv.loadMessages(messages.messages);
       }
     } catch (error) {
-      this.conv.error = `could not start pi: ${error.message}`;
+      // The spawn error and exit handlers already put the real reason on
+      // screen. A failed get_state must not replace it with a timeout or a
+      // generic "pi is not running".
+      if (!this.conv.error) this.conv.error = `could not start pi: ${error.message}`;
     }
     this.schedule();
   }

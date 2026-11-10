@@ -28,6 +28,15 @@ All notable changes to pi-tsp are documented here. The project follows
   extension when the user's extensions already own that tool name.
 - A dead pi child no longer reports `pi is not running`: the exit code and its
   stderr stay on screen instead of being replaced by the rejected command.
+- Spawn failures now settle pending RPC commands immediately and retain the
+  spawn error, including while the surface is starting; a missing pi no longer
+  waits for `get_state` to time out before showing the path.
+- A background `@tintinweb/pi-subagents` completion now settles its agent card
+  (status, stats, output and transcript path) instead of leaving it running and
+  adding a second notification row.
+- Tool-name collision detection now reads symlinked extension files and explicit
+  `--extension` paths, so a dotfiles-style `todo` link or an extension supplied
+  on the command line is recognised alongside a regular config file.
 
 ## [1.0.25] - 2026-11-09
 

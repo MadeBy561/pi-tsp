@@ -358,8 +358,13 @@ export class Conversation {
         else if (message.role === "user") this.confirmUser(message, false);
         else if (message.role === "compactionSummary") this.addSummary("compaction", message);
         else if (message.role === "branchSummary") this.addSummary("branch", message);
-        else if (message.role === "custom" || message.role === "hookMessage") this.addCustom(message);
-        else if (message.role === "bashExecution" || message.role === "pythonExecution") this.addExecution(message);
+        else if (message.role === "custom" || message.role === "hookMessage") {
+          // A subagent-notification is the completion of an existing card, not
+          // a second card. Settle it there; keep the generic custom row only
+          // when no matching agent card exists.
+          const subagentNotice = message.customType === "subagent-notification" && this.applyAgentNotification(message);
+          if (!subagentNotice) this.addCustom(message);
+        } else if (message.role === "bashExecution" || message.role === "pythonExecution") this.addExecution(message);
         break;
       }
       case "tool_execution_start": {
@@ -513,6 +518,12 @@ export class Conversation {
           this.touch();
         } else if (entry.type === "custom" && (entry.data?.todos || entry.data?.todoPhases)) {
           this.noteTodos(entry.data);
+        } else if (entry.type === "custom" && entry.customType === "subagent-notification") {
+          this.applyAgentNotification({
+            customType: entry.customType,
+            content: entry.data?.content || entry.content,
+            details: entry.data?.details || entry.details,
+          });
         }
         break;
       }
@@ -538,6 +549,44 @@ export class Conversation {
       status: "done",
       at: message.timestamp || Date.now(),
     });
+  }
+
+  /**
+   * Apply a @tintinweb/pi-subagents completion notification to its agent card.
+   *
+   * The runtime sends completion as a custom `subagent-notification` message
+   * (and, depending on the pi path, also appends it as a custom entry). The
+   * notification's details carry the agent id, status, tool count, tokens and
+   * output file, but none of that updates the card unless it is matched back
+   * here. Returns true when at least one card was settled.
+   */
+  applyAgentNotification(message) {
+    const details = message?.details || {};
+    const notifications = [details, ...(Array.isArray(details.others) ? details.others : [])];
+    const fallbackText = contentText(message?.content);
+    let matched = false;
+    for (const raw of notifications) {
+      const id = raw?.agentId || raw?.id;
+      if (!id) continue;
+      const item = this.items.find((entry) =>
+        entry.kind === "agent" && (entry.runId === id || entry.asyncId === id || entry.agentId === id)
+      );
+      if (!item) continue;
+      const normalized = {
+        ...raw,
+        agentId: id,
+        tokens: raw.tokens ?? raw.totalTokens,
+      };
+      const text = raw.resultPreview || fallbackText;
+      if (text) item.output = text;
+      this.agentProgress(item, normalized, text, true);
+      if (Number.isFinite(raw.durationMs)) {
+        item.stats = { ...(item.stats || {}), took: raw.durationMs };
+      }
+      item.endedAt = item.endedAt || Date.now();
+      matched = true;
+    }
+    return matched;
   }
 
   addCustom(message) {

@@ -130,6 +130,45 @@ test("a background Agent stays running after its tool result", () => {
   assert.equal(item.agentStatus, "running");
 });
 
+test("@tintinweb background Agent settles when its completion notification arrives", () => {
+  const conv = new Conversation();
+  const item = runToolCall(conv, {
+    name: "Agent",
+    args: { description: "long job", subagent_type: "general-purpose", run_in_background: true },
+    result: {
+      content: [{ type: "text", text: "Agent started in the background." }],
+      details: { toolUses: 0, tokens: "", durationMs: 0, status: "background", agentId: "a-9" },
+    },
+  });
+  assert.equal(item.agentStatus, "running");
+
+  conv.onEvent({
+    type: "message_end",
+    message: {
+      role: "custom",
+      customType: "subagent-notification",
+      content: [{ type: "text", text: "Agent \"long job\" completed" }],
+      details: {
+        id: "a-9",
+        description: "long job",
+        status: "completed",
+        toolUses: 2,
+        totalTokens: 1200,
+        durationMs: 5000,
+        outputFile: "/tmp/a-9.output",
+        resultPreview: "the finished report",
+      },
+    },
+  });
+
+  assert.equal(item.agentStatus, "done");
+  assert.equal(item.stats.tools, 2);
+  assert.equal(item.stats.tokens, 1200);
+  assert.equal(item.transcriptPath, "/tmp/a-9.output");
+  assert.match(item.output, /the finished report/);
+  assert.equal(conv.items.filter((entry) => entry.kind === "custom").length, 0);
+});
+
 test("pi-subagents subagent calls still become agent cards", () => {
   const conv = new Conversation();
   const item = runToolCall(conv, {
