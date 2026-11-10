@@ -5,25 +5,11 @@
  * binary is found on PATH and exec'd with the original argv.
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
 import { ensureConfig } from "./setup.mjs";
+import { stockPath } from "./paths.mjs";
 
 const ST = "\x1b\\";
 const APC = "\x1b_tsp;";
-
-function stockPath() {
-  if (process.env.PI_TSP_PI) return process.env.PI_TSP_PI;
-  for (const name of ["pi", "pi-bolt"]) {
-    for (const dir of (process.env.PATH || "").split(delimiter)) {
-      if (!dir) continue;
-      const candidate = join(dir, name);
-      if (candidate === process.argv[1]) continue;
-      if (existsSync(candidate)) return candidate;
-    }
-  }
-  return "/usr/local/bin/pi";
-}
 
 function runStock(args) {
   const bin = stockPath();

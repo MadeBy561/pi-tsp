@@ -3,6 +3,26 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-09
+
+### Added
+
+- `@tintinweb/pi-subagents` support. Its `Agent` tool is a subagent run just as
+  pi-subagents' `subagent` is, so both now become agent cards with the run's
+  type, model, tool count, tokens and elapsed time taken from the runtime's own
+  details.
+- Subagent transcripts are read from the per-agent `.output` file the runtime
+  streams, derived from the agent id and the session id in `get_state`.
+
+### Fixed
+
+- The surface resolved pi from a hardcoded `/usr/local/bin/pi` instead of
+  `PATH`, so a Homebrew-on-arm64, asdf/mise or npm-prefix install crashed with
+  `spawn /usr/local/bin/pi ENOENT` while the launcher's own fallback worked.
+  Both now share one resolver, and a spawn failure is reported in the surface
+  instead of taking the process down as an unhandled `error` event.
+- `PI_TSP_PI` is honoured by both the launcher and the surface.
+
 ## [1.0.25] - 2026-11-09
 
 ### Changed
