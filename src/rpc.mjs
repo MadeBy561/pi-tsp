@@ -33,8 +33,19 @@ export class PiRpc extends EventEmitter {
       this.stderr = (this.stderr + chunk).slice(-16000);
       this.emit("stderr", chunk);
     });
-    this.child.on("error", (error) => this.emit("error", error));
+    this.child.on("error", (error) => {
+      // A spawn failure has no exit event and no process to answer commands.
+      // Settle the pending calls here so start-up fails immediately with the
+      // spawn error instead of waiting for the first command to time out.
+      if (this.exited) return;
+      this.exited = true;
+      this.exitCode = null;
+      this.emit("error", error);
+      for (const { reject } of this.pending.values()) reject(error);
+      this.pending.clear();
+    });
     this.child.on("exit", (code, signal) => {
+      if (this.exited) return;
       this.exited = true;
       this.exitCode = code;
       this.emit("exit", { code, signal });

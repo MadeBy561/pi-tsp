@@ -108,7 +108,9 @@ Requirements:
 - Node.js **22.19+**
 - `pi` **1.4+** on `PATH`, already configured with at least one model
 - Tern **0.9.5+** for the native surface
-- Optional: `pi-subagents` for subagent rows (`pi install npm:pi-subagents`)
+- Optional: `pi-subagents` (`pi install npm:pi-subagents`) or
+  `@tintinweb/pi-subagents` (`pi install npm:@tintinweb/pi-subagents`) for
+  subagent rows
 
 Install from GitHub:
 
@@ -204,7 +206,8 @@ feature:
 
 - Compaction and branch summaries render when pi emits them; a controlled
   large-session benchmark is still on the roadmap.
-- Subagent rows depend on the optional `pi-subagents` pi package.
+- Subagent rows depend on an optional subagent package: `pi-subagents` or
+  `@tintinweb/pi-subagents`.
 - Pi's native tree-navigation flow is not exposed as a pi-tsp command yet.
 - Narrow layouts and very long transcripts are implemented but not
   continuously benchmarked.

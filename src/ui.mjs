@@ -17,9 +17,9 @@ import { BUILD, THEME, TEXT_CSS, buildView, STYLESHEET, clock, firstLine, humanM
 import { isImagePath, readClipboardFilePaths, readClipboardImage, readClipboardText, readImageFile } from "./clipboard.mjs";
 import { listSessions, sessionPath } from "./sessions.mjs";
 import { configDir, sessionDir } from "./setup.mjs";
+import { stockPath, subagentTaskDirs, toolNamesInSource, toolNamesRegisteredUnder } from "./paths.mjs";
 
 const SURFACE = "pit";
-const STOCK = process.env.PI_TSP_PI || "/usr/local/bin/pi";
 
 function log(...args) {
   if (process.env.PI_TSP_TRACE) {
@@ -29,6 +29,17 @@ function log(...args) {
       /* ESM: no require */
     }
   }
+}
+
+/** The one useful target of a tool call, for a transcript row. */
+function toolTarget(args) {
+  if (!args || typeof args !== "object") return "";
+  const clean = (value) => String(value).trim().replace(/\s+/g, " ").slice(0, 160);
+  for (const key of ["command", "path", "file_path", "pattern", "query", "url", "description", "prompt"]) {
+    if (typeof args[key] === "string" && args[key].trim()) return clean(args[key]);
+  }
+  const first = Object.values(args).find((value) => typeof value === "string" && value.trim());
+  return first ? clean(first) : "";
 }
 
 export class PiTsp {
@@ -139,17 +150,57 @@ export class PiTsp {
   }
 
   resolvePi() {
-    return process.env.PI_TSP_PI || STOCK;
+    // The launcher already resolved this for the stock-pi fallback; the surface
+    // must agree, or the spawn fails with ENOENT on any non-/usr/local layout.
+    return stockPath();
+  }
+
+  extensionScanRoots() {
+    const roots = [
+      join(this.cwd, ".pi", "extensions"),
+      join(configDir(), "extensions"),
+    ];
+    // The launcher forwards these to pi, so a collision can also come from an
+    // explicitly supplied extension file or directory. Resolve relative paths
+    // against the same cwd the child will use.
+    const args = Array.isArray(this.args) ? [...this.args] : [];
+    const extra = process.env.PI_TSP_EXTRA_ARGS;
+    if (extra) args.push(...extra.split(" ").filter(Boolean));
+    for (let index = 0; index < args.length; index += 1) {
+      const arg = args[index];
+      if (arg === "--extension" && index + 1 < args.length) {
+        roots.push(resolve(this.cwd, args[++index]));
+      } else if (arg.startsWith("--extension=")) {
+        const value = arg.slice("--extension=".length);
+        if (value) roots.push(resolve(this.cwd, value));
+      }
+    }
+    return roots;
   }
 
   extensionPaths() {
     const here = dirname(new URL(import.meta.url).pathname);
-    return [
+    const ours = [
       join(here, "..", "ext", "permissions.ts"),
       join(here, "..", "ext", "plan.ts"),
       join(here, "..", "ext", "todo.ts"),
       join(here, "..", "ext", "tree.ts"),
     ].filter((path) => existsSync(path));
+    // pi treats a duplicate tool name as an extension load error, and the session
+    // dies with it: a setup that already has its own `todo` extension cannot also
+    // load ours. An extension cannot see what is registered while it is still
+    // loading, so the collision is settled here, from the files on disk.
+    const taken = toolNamesRegisteredUnder(this.extensionScanRoots());
+    if (!taken.size) return ours;
+    return ours.filter((path) => {
+      let own;
+      try {
+        own = toolNamesInSource(readFileSync(path, "utf8"));
+      } catch {
+        return true;
+      }
+      return ![...own].some((name) => taken.has(name));
+    });
   }
 
   async startRpc() {
@@ -177,6 +228,15 @@ export class PiTsp {
     if (process.env.PI_TSP_EXTRA_ARGS) args.push(...process.env.PI_TSP_EXTRA_ARGS.split(" ").filter(Boolean));
     this.rpc = new PiRpc({ bin: this.resolvePi(), args, cwd: this.cwd, env: { PI_CODING_AGENT_DIR: configDir() } });
     this.rpc.on("event", (event) => this.onEvent(event));
+    // A spawn failure arrives as an EventEmitter `error`; unhandled it throws and
+    // takes the surface down before the user can see why.
+    this.rpc.on("error", (error) => {
+      this.conv.busy = false;
+      this.conv.error = error?.code === "ENOENT"
+        ? `could not run pi at ${this.rpc.bin} — install pi on PATH or set PI_TSP_PI`
+        : `pi failed to start: ${error?.message || error}`;
+      this.schedule();
+    });
     this.rpc.on("stderr", (chunk) => {
       if (process.env.PI_TSP_TRACE) {
         try {
@@ -215,7 +275,10 @@ export class PiTsp {
         this.conv.loadMessages(messages.messages);
       }
     } catch (error) {
-      this.conv.error = `could not start pi: ${error.message}`;
+      // The spawn error and exit handlers already put the real reason on
+      // screen. A failed get_state must not replace it with a timeout or a
+      // generic "pi is not running".
+      if (!this.conv.error) this.conv.error = `could not start pi: ${error.message}`;
     }
     this.schedule();
   }
@@ -650,7 +713,7 @@ export class PiTsp {
     }
   }
 
-  onAction(act, nodeId, value, event) {
+  onAction(act, nodeId, _value, _event) {
     if (act === "field-submit") {
       this.submitField(this.fieldDialog?.text || "");
       return;
@@ -1074,7 +1137,9 @@ export class PiTsp {
       this.schedule();
     }).catch((error) => {
       this.conv.busy = false;
-      this.conv.error = error.message;
+      // A child that died already reported why (exit code and its stderr); the
+      // rejected command must not replace that with "pi is not running".
+      if (!this.rpc?.exited) this.conv.error = error.message;
       this.schedule();
     });
   }
@@ -2046,6 +2111,24 @@ export class PiTsp {
     }
   }
 
+  /**
+   * pi-subagents (tintinweb) streams every agent's turns to
+   * `<tmp>/pi-subagents-<uid>/<encoded-cwd>/<session>/tasks/<agentId>.output`
+   * and never names that file in the tool result, so derive it from the agent
+   * id the details carry and the session id pi reported in `get_state`.
+   */
+  resolveSidecarTranscript(agent) {
+    if (!agent?.runId) return "";
+    for (const dir of subagentTaskDirs({ cwd: this.cwd, sessionId: this.sessionId })) {
+      const path = join(dir, `${agent.runId}.output`);
+      if (existsSync(path)) {
+        agent.transcriptPath = path;
+        return path;
+      }
+    }
+    return "";
+  }
+
   requestAgentInspect(agent) {
     if (!agent?.asyncId) return;
     const requestId = `tsp${Date.now().toString(36)}${Math.floor(Math.random() * 9999)}`;
@@ -2075,7 +2158,18 @@ export class PiTsp {
   async loadAgentTranscript(agent) {
     let path = agent.transcriptPath;
     if (!path && agent.asyncDir) path = this.resolveAsyncTranscript(agent);
+    if (!path) path = this.resolveSidecarTranscript(agent);
     if (!path || !existsSync(path)) {
+      // Only pi-subagents answers the inspection RPC. Any other runtime has no
+      // transcript to fetch, so show the report the tool already returned.
+      if (!agent.asyncId) {
+        this.agentModal.nodes = agent.output
+          ? [{ k: "md", p: { text: String(agent.output).slice(0, 12000) } }]
+          : [{ k: "text", p: { spans: [{ t: "This subagent runtime exposes no transcript for the agent.", s: "muted" }] } }];
+        this.agentModal.loading = false;
+        this.schedule();
+        return;
+      }
       this.agentModal.nodes = [{ k: "text", p: { spans: [{ t: "No transcript file yet; asking the subagent runtime…", s: "muted" }] } }];
       this.agentModal.loading = true;
       this.schedule();
@@ -2104,6 +2198,9 @@ export class PiTsp {
     let index = 0;
     let lastUser = "";
     const toolNames = new Map();
+    // Streamed `.output` transcripts carry conversation turns only; the runtime
+    // that writes tool_start/tool_end records is a different one.
+    const hasToolRecords = records.some((record) => record.recordType === "tool_start" || record.recordType === "tool_end");
     const cleanUserText = (text) => String(text || "")
       .split("\n")
       .filter((line) => !/^\s*(Output:|This path is authoritative|Ignore any other output|\[prompt redacted\]|live Prompt Audit only)/i.test(line))
@@ -2153,9 +2250,24 @@ export class PiTsp {
             });
           } else if (block.type === "text") {
             if (block.text?.trim()) nodes.push({ id: `am.a${index++}`, k: "md", p: { text: block.text } });
+          } else if (block.type === "toolCall" && !hasToolRecords) {
+            // No tool_start record exists for this transcript, so the assistant's
+            // own block is the only place the call survives.
+            nodes.push({
+              id: `am.t${index++}`,
+              k: "tool",
+              p: {
+                name: block.name || "tool",
+                title: spans(block.name || "tool"),
+                target: spans(toolTarget(block.arguments)),
+                status: "done",
+                frame: "inline",
+                collapsible: false,
+              },
+            });
           }
-          // Tool calls are rendered from tool_start/tool_end records; rendering the
-          // assistant's toolCall blocks too would duplicate every command.
+          // Otherwise tool calls come from the tool_start/tool_end records;
+          // rendering these blocks too would duplicate every command.
         }
       }
       if (message.role === "toolResult") {
@@ -2334,7 +2446,7 @@ export class PiTsp {
     }
   }
 
-  async shutdown(reason) {
+  async shutdown(_reason) {
     if (this.stopping) return;
     this.stopping = true;
     this.closed = true;

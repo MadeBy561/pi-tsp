@@ -99,6 +99,44 @@ function fmtModel(model) {
   return friendly[id] || id;
 }
 
+/**
+ * Tool names that start a subagent run. `subagent` is pi-subagents'; `Agent` is
+ * what @tintinweb/pi-subagents registers, and the two runtimes differ in every
+ * other detail too — see `agentProgress`.
+ */
+const AGENT_TOOL_NAMES = new Set(["subagent", "agent"]);
+
+export function isAgentTool(name) {
+  return AGENT_TOOL_NAMES.has(String(name || "").toLowerCase());
+}
+
+/** Run statuses across runtimes collapse onto pi-tsp's three states. */
+const AGENT_STATUS = {
+  running: "running", queued: "running", background: "running", pending: "running", starting: "running",
+  complete: "done", completed: "done", done: "done", success: "done", succeeded: "done",
+  failed: "failed", error: "failed", cancelled: "failed", canceled: "failed",
+  stopped: "stopped", aborted: "stopped",
+};
+
+function agentStatusOf(raw) {
+  if (!raw) return undefined;
+  return AGENT_STATUS[String(raw).toLowerCase()];
+}
+
+/**
+ * Token counts arrive as a number, inside `usage`, or preformatted for a
+ * statusline ("12.3k", "850 token", "~11.0k token"). Only the number is useful
+ * for the card's stats, so read a leading quantity and ignore the unit word.
+ */
+function tokenCount(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const match = value.trim().match(/^~?([\d.]+)\s*([kmg])?/i);
+  if (!match) return undefined;
+  const scale = { k: 1e3, m: 1e6, g: 1e9 }[String(match[2] || "").toLowerCase()] || 1;
+  return Math.round(Number(match[1]) * scale);
+}
+
 export class Conversation {
   constructor() {
     this.items = [];
@@ -277,7 +315,7 @@ export class Conversation {
           item.endedAt = Date.now();
           this.touch();
         } else if (update.type === "toolcall_start") {
-          const isAgent = update.toolName === "subagent";
+          const isAgent = isAgentTool(update.toolName);
           const tool = this.blockItem(index, isAgent ? "agent" : "tool", {
             toolCallId: update.id,
             name: update.toolName,
@@ -304,7 +342,7 @@ export class Conversation {
           item.args = toolCall.arguments || {};
           item.rawArgs = "";
           if (item.toolCallId) this.byToolCall.set(item.toolCallId, item);
-          if (item.name === "subagent") this.promoteAgent(item);
+          if (isAgentTool(item.name)) this.promoteAgent(item);
           this.touch();
         } else if (update.type === "error") {
           this.error = update.error || "the model stream failed";
@@ -320,8 +358,13 @@ export class Conversation {
         else if (message.role === "user") this.confirmUser(message, false);
         else if (message.role === "compactionSummary") this.addSummary("compaction", message);
         else if (message.role === "branchSummary") this.addSummary("branch", message);
-        else if (message.role === "custom" || message.role === "hookMessage") this.addCustom(message);
-        else if (message.role === "bashExecution" || message.role === "pythonExecution") this.addExecution(message);
+        else if (message.role === "custom" || message.role === "hookMessage") {
+          // A subagent-notification is the completion of an existing card, not
+          // a second card. Settle it there; keep the generic custom row only
+          // when no matching agent card exists.
+          const subagentNotice = message.customType === "subagent-notification" && this.applyAgentNotification(message);
+          if (!subagentNotice) this.addCustom(message);
+        } else if (message.role === "bashExecution" || message.role === "pythonExecution") this.addExecution(message);
         break;
       }
       case "tool_execution_start": {
@@ -475,6 +518,12 @@ export class Conversation {
           this.touch();
         } else if (entry.type === "custom" && (entry.data?.todos || entry.data?.todoPhases)) {
           this.noteTodos(entry.data);
+        } else if (entry.type === "custom" && entry.customType === "subagent-notification") {
+          this.applyAgentNotification({
+            customType: entry.customType,
+            content: entry.data?.content || entry.content,
+            details: entry.data?.details || entry.details,
+          });
         }
         break;
       }
@@ -500,6 +549,44 @@ export class Conversation {
       status: "done",
       at: message.timestamp || Date.now(),
     });
+  }
+
+  /**
+   * Apply a @tintinweb/pi-subagents completion notification to its agent card.
+   *
+   * The runtime sends completion as a custom `subagent-notification` message
+   * (and, depending on the pi path, also appends it as a custom entry). The
+   * notification's details carry the agent id, status, tool count, tokens and
+   * output file, but none of that updates the card unless it is matched back
+   * here. Returns true when at least one card was settled.
+   */
+  applyAgentNotification(message) {
+    const details = message?.details || {};
+    const notifications = [details, ...(Array.isArray(details.others) ? details.others : [])];
+    const fallbackText = contentText(message?.content);
+    let matched = false;
+    for (const raw of notifications) {
+      const id = raw?.agentId || raw?.id;
+      if (!id) continue;
+      const item = this.items.find((entry) =>
+        entry.kind === "agent" && (entry.runId === id || entry.asyncId === id || entry.agentId === id)
+      );
+      if (!item) continue;
+      const normalized = {
+        ...raw,
+        agentId: id,
+        tokens: raw.tokens ?? raw.totalTokens,
+      };
+      const text = raw.resultPreview || fallbackText;
+      if (text) item.output = text;
+      this.agentProgress(item, normalized, text, true);
+      if (Number.isFinite(raw.durationMs)) {
+        item.stats = { ...(item.stats || {}), took: raw.durationMs };
+      }
+      item.endedAt = item.endedAt || Date.now();
+      matched = true;
+    }
+    return matched;
   }
 
   addCustom(message) {
@@ -584,7 +671,7 @@ export class Conversation {
           });
           item.args = block.arguments || item.args;
           item.status = item.status === "queued" ? "queued" : item.status;
-          if (item.name === "subagent") this.promoteAgent(item);
+          if (isAgentTool(item.name)) this.promoteAgent(item);
         }
       });
     } else {
@@ -607,7 +694,7 @@ export class Conversation {
             status: "queued",
             at: message.timestamp || now,
           });
-          if (item.name === "subagent") this.promoteAgent(item);
+          if (isAgentTool(item.name)) this.promoteAgent(item);
         }
       });
     }
@@ -686,13 +773,17 @@ export class Conversation {
   }
 
   promoteAgent(item) {
-    if (item.kind === "agent") return;
+    if (!item) return;
+    // Idempotent: a card may be created on the first tool-call delta and then be
+    // promoted again when the full arguments land.
     item.kind = "agent";
-    item.agentType = item.args?.agent || item.args?.subagent_type || "agent";
-    item.name = item.args?.task ? String(item.args.task).split("\n")[0].slice(0, 90) : item.args?.description || "Subagent";
-    item.agentStatus = "running";
+    item.agentType = item.args?.subagent_type || item.args?.agent || item.args?.type || item.agentType || "agent";
+    const label = item.args?.description || item.args?.task || item.args?.name;
+    if (label) item.name = String(label).split("\n")[0].slice(0, 90);
+    item.name = item.name || "Subagent";
+    item.agentStatus = item.agentStatus || "running";
     item.startedAt = item.startedAt || Date.now();
-    item.stats = { tools: 0, tokens: 0 };
+    item.stats = item.stats || { tools: 0, tokens: 0 };
   }
 
   agentProgress(item, details, text, final) {
@@ -735,9 +826,33 @@ export class Conversation {
     if (result?.asyncDir) item.asyncDir = result.asyncDir;
     if (result?.runId) item.runId = result.runId;
     if (result?.finalOutput) item.output = result.finalOutput;
+    // Flat details: @tintinweb/pi-subagents' `Agent` tool reports one level up
+    // (`toolUses`, `tokens` as text, `status`, `agentId`) instead of the nested
+    // `results[].progress` shape pi-subagents uses.
+    const flatTools = details?.toolUses ?? details?.toolCount;
+    const flatTokens = tokenCount(details?.tokens) ?? tokenCount(details?.totalTokens);
+    const flatStatus = agentStatusOf(details?.status);
+    if (flatTools != null || flatTokens != null || details?.durationMs != null) {
+      item.stats = {
+        ...(item.stats || {}),
+        tools: flatTools ?? item.stats?.tools ?? 0,
+        tokens: flatTokens ?? item.stats?.tokens ?? 0,
+        took: details?.durationMs ?? item.stats?.took,
+      };
+    }
+    if (details?.subagentType) item.agentType = details.subagentType;
+    if (details?.modelName) item.model = fmtModel(details.modelName);
+    if (details?.activity) item.activity = String(details.activity);
+    if (details?.agentId) item.runId = details.agentId;
+    if (details?.outputFile) item.transcriptPath = details.outputFile;
+    if (details?.error) item.error = String(details.error);
+    if (flatStatus) item.agentStatus = flatStatus;
     if (final) {
-      const detached = Boolean(result?.asyncId && !(details?.results?.length));
-      item.agentStatus = detached ? "running" : item.isError || (result?.exitCode != null && result.exitCode !== 0) ? "failed" : "done";
+      // A background run returns its tool result immediately and keeps going;
+      // only the runtime's own status may settle it.
+      const detached = Boolean(result?.asyncId && !(details?.results?.length)) || flatStatus === "running";
+      const settled = item.isError || (result?.exitCode != null && result.exitCode !== 0) ? "failed" : "done";
+      item.agentStatus = detached ? "running" : flatStatus || settled;
       item.endedAt = Date.now();
       if (item.startedAt) item.stats = { ...(item.stats || {}), took: item.endedAt - item.startedAt };
       if (!item.output && text) item.output = text;
@@ -807,7 +922,7 @@ export class Conversation {
             status: "queued",
             at: message.timestamp || Date.now(),
           });
-          if (item.name === "subagent") this.promoteAgent(item);
+          if (isAgentTool(item.name)) this.promoteAgent(item);
         }
       });
       if (message.usage) {

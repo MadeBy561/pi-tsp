@@ -5,7 +5,7 @@
  */
 import { fmtModel } from "./state.mjs";
 
-export const BUILD = "pit-1.0.25+2026.11.09";
+export const BUILD = "pit-1.1.0+2026-11-09";
 
 export const THEME = {
   dark: {
@@ -160,6 +160,7 @@ const TOOL_ICONS = {
   find: "search",
   ls: "files",
   subagent: "agents",
+  agent: "agents",
   web: "globe",
   webfetch: "globe",
   websearch: "search",
@@ -176,6 +177,7 @@ const TOOL_TITLES = {
   find: "Found",
   ls: "Listed",
   subagent: "Delegated",
+  agent: "Delegated",
   web: "Opened",
   webfetch: "Fetched",
   websearch: "Searched",
@@ -189,6 +191,9 @@ function toolTarget(item) {
   if (item.name === "grep") return [args.pattern || "", "pattern"];
   if (item.name === "find") return [args.pattern || args.glob || "", "pattern"];
   if (item.name === "subagent") return [args.agent || "", "text"];
+  // @tintinweb/pi-subagents names the tool `Agent` and describes the run in
+  // `description` instead of a task string.
+  if (String(item.name || "").toLowerCase() === "agent") return [args.description || args.subagent_type || args.name || "", "text"];
   for (const key of ["command", "path", "file_path", "pattern", "query", "url", "description"]) {
     if (typeof args[key] === "string" && args[key]) return [args[key], key === "command" ? "command" : "text"];
   }
@@ -273,6 +278,10 @@ export function renderTool(item, ctx) {
   props.badges = [];
   if (name === "subagent") props.badges.push({ text: args.agent || "agent", tone: "accent" });
   if (args.async === false && name === "subagent") props.badges.push({ text: "foreground", tone: "muted" });
+  if (name === "agent") {
+    props.badges.push({ text: args.subagent_type || "agent", tone: "accent" });
+    if (args.run_in_background === false) props.badges.push({ text: "foreground", tone: "muted" });
+  }
 
   const body = [];
   const base = `${item.id}`;
@@ -341,8 +350,10 @@ export function renderAgent(item, ctx) {
     role: "pit.agent",
     name: "Task",
     agent: item.agentType || "agent",
-    badges: item.args?.async ? [{ text: "background", tone: "muted" }] : [],
-    task: item.args?.task ? [{ t: firstLine(item.args.task, 120), s: "muted" }] : undefined,
+    badges: item.args?.async || item.args?.run_in_background ? [{ text: "background", tone: "muted" }] : [],
+    task: (item.args?.task || item.args?.description || item.args?.prompt)
+      ? [{ t: firstLine(item.args.task || item.args.description || item.args.prompt, 120), s: "muted" }]
+      : undefined,
     status,
     model: item.model || "",
     thinking: item.thinking || "",
@@ -392,7 +403,7 @@ export function renderSummary(item, ctx) {
   ]), item.id);
 }
 
-export function renderCustom(item, ctx) {
+export function renderCustom(item, _ctx) {
   const hook = item.kind === "hook";
   const head = id(n("row", { gap: "xs", align: "center" }, [
     id(n("icon", { name: hook ? "link" : "package", tone: "muted" }), `${item.id}.ic`),
@@ -410,7 +421,7 @@ export function renderCustom(item, ctx) {
   ]), item.id);
 }
 
-export function renderExecution(item, ctx) {
+export function renderExecution(item, _ctx) {
   const python = item.kind === "python";
   const failed = item.status === "error" || (item.exitCode != null && item.exitCode !== 0);
   return id(n("tool", {
@@ -489,27 +500,11 @@ export function renderUser(item, ctx) {
   ]), item.id);
 }
 
-export function renderAssistant(item, ctx) {
+export function renderAssistant(item, _ctx) {
   const streaming = item.status === "streaming" || item.status === "pending";
   return id(n("col", { gap: "none", role: "pit.answer" }, [
     id(n("md", { text: item.text || "", stream: streaming, actions: { menu: ["copy"] } }), `${item.id}.md`),
   ]), item.id);
-}
-
-function footerForTurn(items, ctx) {
-  const tools = items.filter((item) => item.kind === "tool" || item.kind === "agent").length;
-  const took = ctx.turnMs || 0;
-  const bits = [];
-  if (took) bits.push(`Worked for ${humanMs(took)}`);
-  if (tools) bits.push(`${tools} tool${tools === 1 ? "" : "s"}`);
-  if (ctx.turnTokens) bits.push(`${humanTokens(ctx.turnTokens)} tok`);
-  if (ctx.tokPerSec) bits.push(`${ctx.tokPerSec} tok/s`);
-  if (!bits.length) return null;
-  return id(n("rule", {
-    variant: "line",
-    label: [{ t: bits.join(" · "), s: "muted" }],
-    time: clock(Date.now()),
-  }), `turn.footer.${items[0]?.id || "x"}`);
 }
 
 /** A turn is everything between two user messages. */
@@ -633,7 +628,7 @@ export function splash(conv, ctx) {
   ]), "splash");
 }
 
-export function renderPlan(conv, ctx) {
+export function renderPlan(conv, _ctx) {
   if (!conv.plan?.steps?.length) return null;
   const done = conv.plan.steps.filter((step) => step.done).length;
   const items = conv.plan.steps.map((step, index) =>
@@ -652,7 +647,7 @@ export function renderPlan(conv, ctx) {
   return id(n("card", { role: "pit.plan", inset: true }, [head, ...items]), "plan");
 }
 
-export function renderApproval(conv, ctx) {
+export function renderApproval(_conv, ctx) {
   const approval = ctx.approval;
   if (!approval) return null;
   const buttons = [

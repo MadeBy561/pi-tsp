@@ -77,3 +77,107 @@ test("buildView renders a todo board without throwing", () => {
   const stream = root.c?.find((node) => node.p?.role === "pit.stream") || root.c?.[0] || root;
   assert.ok(stream.c.length >= 2);
 });
+
+/** Drive one assistant tool call through the RPC event sequence pi emits. */
+function runToolCall(conv, { name, args, partials = [], result }) {
+  conv.onEvent({ type: "message_start", message: { role: "assistant", content: [] } });
+  conv.onEvent({ type: "message_update", assistantMessageEvent: { type: "toolcall_start", toolName: name, id: "call-1", contentIndex: 0 } });
+  conv.onEvent({ type: "message_update", assistantMessageEvent: { type: "toolcall_end", contentIndex: 0, toolCall: { id: "call-1", name, arguments: args } } });
+  conv.onEvent({ type: "tool_execution_start", toolCallId: "call-1", toolName: name, args });
+  for (const partial of partials) {
+    conv.onEvent({ type: "tool_execution_update", toolCallId: "call-1", toolName: name, partialResult: partial });
+  }
+  conv.onEvent({ type: "tool_execution_end", toolCallId: "call-1", toolName: name, result, isError: false, durationMs: 9000 });
+  return conv.items.find((item) => item.toolCallId === "call-1");
+}
+
+test("@tintinweb/pi-subagents Agent calls become agent cards", () => {
+  const conv = new Conversation();
+  const item = runToolCall(conv, {
+    name: "Agent",
+    args: { description: "audit the auth flow", subagent_type: "Explore", prompt: "…" },
+    partials: [{
+      content: [{ type: "text", text: "3 tool uses..." }],
+      details: { toolUses: 3, tokens: "1.2k token", durationMs: 1200, status: "running", subagentType: "Explore", modelName: "anthropic/claude-haiku-4", agentId: "a-7", activity: "grep auth" },
+    }],
+    result: {
+      content: [{ type: "text", text: "Agent completed in 9s (5 tool uses, 2.4k tokens).\n\nReport." }],
+      details: { toolUses: 5, tokens: "2.4k token", durationMs: 9000, status: "completed", subagentType: "Explore", modelName: "anthropic/claude-haiku-4", agentId: "a-7" },
+    },
+  });
+  assert.equal(item.kind, "agent");
+  assert.equal(item.name, "audit the auth flow");
+  assert.equal(item.agentType, "Explore");
+  assert.equal(item.model, "anthropic/claude-haiku-4");
+  assert.equal(item.stats.tools, 5);
+  assert.equal(item.stats.tokens, 2400);
+  assert.equal(item.runId, "a-7");
+  assert.equal(item.agentStatus, "done");
+  assert.match(item.output, /Report\./);
+});
+
+test("a background Agent stays running after its tool result", () => {
+  const conv = new Conversation();
+  const item = runToolCall(conv, {
+    name: "Agent",
+    args: { description: "long job", subagent_type: "general-purpose", run_in_background: true },
+    result: {
+      content: [{ type: "text", text: "Agent started in the background. Use get_subagent_result…" }],
+      details: { toolUses: 0, tokens: "", durationMs: 0, status: "background", agentId: "a-9" },
+    },
+  });
+  assert.equal(item.kind, "agent");
+  assert.equal(item.agentStatus, "running");
+});
+
+test("@tintinweb background Agent settles when its completion notification arrives", () => {
+  const conv = new Conversation();
+  const item = runToolCall(conv, {
+    name: "Agent",
+    args: { description: "long job", subagent_type: "general-purpose", run_in_background: true },
+    result: {
+      content: [{ type: "text", text: "Agent started in the background." }],
+      details: { toolUses: 0, tokens: "", durationMs: 0, status: "background", agentId: "a-9" },
+    },
+  });
+  assert.equal(item.agentStatus, "running");
+
+  conv.onEvent({
+    type: "message_end",
+    message: {
+      role: "custom",
+      customType: "subagent-notification",
+      content: [{ type: "text", text: "Agent \"long job\" completed" }],
+      details: {
+        id: "a-9",
+        description: "long job",
+        status: "completed",
+        toolUses: 2,
+        totalTokens: 1200,
+        durationMs: 5000,
+        outputFile: "/tmp/a-9.output",
+        resultPreview: "the finished report",
+      },
+    },
+  });
+
+  assert.equal(item.agentStatus, "done");
+  assert.equal(item.stats.tools, 2);
+  assert.equal(item.stats.tokens, 1200);
+  assert.equal(item.transcriptPath, "/tmp/a-9.output");
+  assert.match(item.output, /the finished report/);
+  assert.equal(conv.items.filter((entry) => entry.kind === "custom").length, 0);
+});
+
+test("pi-subagents subagent calls still become agent cards", () => {
+  const conv = new Conversation();
+  const item = runToolCall(conv, {
+    name: "subagent",
+    args: { task: "map the parser", agent: "explore" },
+    result: { content: [{ type: "text", text: "done" }], details: { results: [{ progress: { toolCount: 4, tokens: 900, durationMs: 3000 } }] } },
+  });
+  assert.equal(item.kind, "agent");
+  assert.equal(item.agentType, "explore");
+  assert.equal(item.stats.tools, 4);
+  assert.equal(item.agentStatus, "done");
+});

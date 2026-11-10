@@ -3,6 +3,41 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-09
+
+### Added
+
+- `@tintinweb/pi-subagents` support. Its `Agent` tool is a subagent run just as
+  pi-subagents' `subagent` is, so both now become agent cards with the run's
+  type, model, tool count, tokens and elapsed time taken from the runtime's own
+  details.
+- Subagent transcripts are read from the per-agent `.output` file the runtime
+  streams, derived from the agent id and the session id in `get_state`.
+
+### Fixed
+
+- The surface resolved pi from a hardcoded `/usr/local/bin/pi` instead of
+  `PATH`, so a Homebrew-on-arm64, asdf/mise or npm-prefix install crashed with
+  `spawn /usr/local/bin/pi ENOENT` while the launcher's own fallback worked.
+  Both now share one resolver, and a spawn failure is reported in the surface
+  instead of taking the process down as an unhandled `error` event.
+- `PI_TSP_PI` is honoured by both the launcher and the surface.
+- A `todo` tool the user's own config already registers no longer collides with
+  pi-tsp's bundled `todo` extension. pi treats the duplicate as an extension
+  load error and the session died with it, so the surface now skips its own
+  extension when the user's extensions already own that tool name.
+- A dead pi child no longer reports `pi is not running`: the exit code and its
+  stderr stay on screen instead of being replaced by the rejected command.
+- Spawn failures now settle pending RPC commands immediately and retain the
+  spawn error, including while the surface is starting; a missing pi no longer
+  waits for `get_state` to time out before showing the path.
+- A background `@tintinweb/pi-subagents` completion now settles its agent card
+  (status, stats, output and transcript path) instead of leaving it running and
+  adding a second notification row.
+- Tool-name collision detection now reads symlinked extension files and explicit
+  `--extension` paths, so a dotfiles-style `todo` link or an extension supplied
+  on the command line is recognised alongside a regular config file.
+
 ## [1.0.25] - 2026-11-09
 
 ### Changed
