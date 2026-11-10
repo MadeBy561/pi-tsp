@@ -17,7 +17,7 @@ import { BUILD, THEME, TEXT_CSS, buildView, STYLESHEET, clock, firstLine, humanM
 import { isImagePath, readClipboardFilePaths, readClipboardImage, readClipboardText, readImageFile } from "./clipboard.mjs";
 import { listSessions, sessionPath } from "./sessions.mjs";
 import { configDir, sessionDir } from "./setup.mjs";
-import { stockPath, subagentTaskDirs } from "./paths.mjs";
+import { stockPath, subagentTaskDirs, toolNamesInSource, toolNamesRegisteredUnder } from "./paths.mjs";
 
 const SURFACE = "pit";
 
@@ -157,12 +157,30 @@ export class PiTsp {
 
   extensionPaths() {
     const here = dirname(new URL(import.meta.url).pathname);
-    return [
+    const ours = [
       join(here, "..", "ext", "permissions.ts"),
       join(here, "..", "ext", "plan.ts"),
       join(here, "..", "ext", "todo.ts"),
       join(here, "..", "ext", "tree.ts"),
     ].filter((path) => existsSync(path));
+    // pi treats a duplicate tool name as an extension load error, and the session
+    // dies with it: a setup that already has its own `todo` extension cannot also
+    // load ours. An extension cannot see what is registered while it is still
+    // loading, so the collision is settled here, from the files on disk.
+    const taken = toolNamesRegisteredUnder([
+      join(this.cwd, ".pi", "extensions"),
+      join(configDir(), "extensions"),
+    ]);
+    if (!taken.size) return ours;
+    return ours.filter((path) => {
+      let own;
+      try {
+        own = toolNamesInSource(readFileSync(path, "utf8"));
+      } catch {
+        return true;
+      }
+      return ![...own].some((name) => taken.has(name));
+    });
   }
 
   async startRpc() {
@@ -1096,7 +1114,9 @@ export class PiTsp {
       this.schedule();
     }).catch((error) => {
       this.conv.busy = false;
-      this.conv.error = error.message;
+      // A child that died already reported why (exit code and its stderr); the
+      // rejected command must not replace that with "pi is not running".
+      if (!this.rpc?.exited) this.conv.error = error.message;
       this.schedule();
     });
   }

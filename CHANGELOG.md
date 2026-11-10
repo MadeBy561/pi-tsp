@@ -22,6 +22,12 @@ All notable changes to pi-tsp are documented here. The project follows
   Both now share one resolver, and a spawn failure is reported in the surface
   instead of taking the process down as an unhandled `error` event.
 - `PI_TSP_PI` is honoured by both the launcher and the surface.
+- A `todo` tool the user's own config already registers no longer collides with
+  pi-tsp's bundled `todo` extension. pi treats the duplicate as an extension
+  load error and the session died with it, so the surface now skips its own
+  extension when the user's extensions already own that tool name.
+- A dead pi child no longer reports `pi is not running`: the exit code and its
+  stderr stay on screen instead of being replaced by the rejected command.
 
 ## [1.0.25] - 2026-11-09
 

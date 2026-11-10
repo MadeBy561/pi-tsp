@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { encodeCwd, stockPath, subagentTaskDirs } from "../src/paths.mjs";
+import { encodeCwd, stockPath, subagentTaskDirs, toolNamesInSource, toolNamesRegisteredUnder } from "../src/paths.mjs";
 
 test("encodeCwd matches the pi-subagents scratch-dir key", () => {
   assert.equal(encodeCwd("/Users/jg/Code/pi-tsp"), "Users-jg-Code-pi-tsp");
@@ -33,4 +33,29 @@ test("subagentTaskDirs finds the session dir and every sibling", () => {
   const dirs = subagentTaskDirs({ cwd: "/work/proj", sessionId: "session-b", home, uid: 501 });
   assert.equal(dirs[0], join(root, "session-b", "tasks"));
   assert.ok(dirs.includes(join(root, "session-a", "tasks")));
+});
+
+test("toolNamesInSource reads registrations without importing the file", () => {
+  const source = [
+    "export default function x(pi) {",
+    "\tpi.registerCommand(\"todos\", { handler: () => {} });",
+    "\tpi.registerTool({",
+    "\t\tname: \"todo\",",
+    "\t\tlabel: \"Todo\",",
+    "\t});",
+    "}",
+  ].join("\n");
+  assert.deepEqual([...toolNamesInSource(source)], ["todo"]);
+  assert.equal(toolNamesInSource('pi.registerCommand("clear")').size, 0);
+});
+
+test("toolNamesRegisteredUnder finds nested and symlinked extensions", () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-tsp-ext-"));
+  writeFileSync(join(root, "own.ts"), 'pi.registerTool({ name: "todo" });');
+  mkdirSync(join(root, "sub"));
+  writeFileSync(join(root, "sub", "web.ts"), 'pi.registerTool({ name: "websearch" });');
+  const linked = join(root, "linked");
+  mkdirSync(linked);
+  writeFileSync(join(linked, "guard.ts"), 'pi.registerFlag("guard-mode", {});');
+  assert.deepEqual([...toolNamesRegisteredUnder([join(root, "does-not-exist"), root])].sort(), ["todo", "websearch"]);
 });
