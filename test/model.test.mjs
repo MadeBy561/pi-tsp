@@ -206,3 +206,17 @@ test("the context breakdown is exact from the second request on", async () => {
   assert.deepEqual(rows["System prompt, tools and summaries"], [3000, false]);
   assert.equal(Object.values(rows).reduce((sum, [value]) => sum + value, 0), 3695, "the rows add up to pi's total");
 });
+
+test("a restored subagent keeps the stored run's tool count and duration", () => {
+  const conv = new Conversation();
+  conv.loadMessages([
+    { role: "user", content: "go", timestamp: 1 },
+    { role: "assistant", timestamp: 2, content: [{ type: "toolCall", id: "s1", name: "subagent", arguments: { agent: "scout", task: "look" } }, { type: "toolCall", id: "s2", name: "subagent", arguments: { agent: "nope", task: "look" } }] },
+    { role: "toolResult", toolCallId: "s1", toolName: "subagent", content: [{ type: "text", text: "ok" }], details: { results: [{ agent: "scout", exitCode: 0, progressSummary: { toolCount: 3, tokens: 3519, durationMs: 6451 } }] } },
+    { role: "toolResult", toolCallId: "s2", toolName: "subagent", isError: true, content: [{ type: "text", text: "Unknown agent" }] },
+  ]);
+  const [done, failed] = conv.items.filter(item => item.kind === "agent");
+  assert.equal(done.stats.tools, 3);
+  assert.equal(done.stats.took, 6451);
+  assert.equal(failed.stats.took, undefined, "no wall-clock duration is invented on replay");
+});

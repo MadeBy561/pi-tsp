@@ -311,6 +311,8 @@ export class Conversation {
 
   #seq = 0;
   #msgSeq = 0;
+  /** True while a stored transcript is replayed: wall-clock durations mean nothing then. */
+  #restoring = false;
   #byKey = new Map<string, Item>();
   #byToolCall = new Map<string, Item>();
   #pending: PendingAssistant | null = null;
@@ -1007,7 +1009,8 @@ export class Conversation {
    */
   #agentProgress(item: Item, details: any, text: string, final: boolean): void {
     const result = details?.results?.[0] || details;
-    const progress = result?.progress || details?.progress;
+    // A stored result keeps only the summary of its progress.
+    const progress = result?.progress || result?.progressSummary || details?.progress;
     const configured = item.args?.agent || item.args?.subagent_type;
     if (configured) item.agentType = configured;
     else if (result?.agent && result.agent !== "agent") item.agentType = result.agent;
@@ -1070,7 +1073,7 @@ export class Conversation {
       if (detached) item.background = true;
       else {
         item.endedAt = Date.now();
-        if (item.startedAt && item.stats?.took == null) item.stats = { ...item.stats, took: item.endedAt - item.startedAt };
+        if (item.startedAt && item.stats?.took == null && !this.#restoring) item.stats = { ...item.stats, took: item.endedAt - item.startedAt };
       }
       if (!item.output && text) item.output = text;
     }
@@ -1089,6 +1092,7 @@ export class Conversation {
     this.retry = null;
     this.shell = null;
     this.cost = 0;
+    this.#restoring = true;
     for (const message of messages) {
       if (!message || message.role === "system") continue;
       if (message.role === "user") {
@@ -1116,6 +1120,7 @@ export class Conversation {
       if (item.kind === "agent" && (item.agentStatus === "pending" || item.agentStatus === "running") && !item.background) item.agentStatus = "aborted";
       if (item.kind === "thinking") item.tookMs = undefined;
     }
+    this.#restoring = false;
     this.busy = false;
     this.touch();
   }

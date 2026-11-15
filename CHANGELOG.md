@@ -3,6 +3,13 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.2] - 2026-11-15
+
+### Fixed
+
+- A resumed session shows each subagent's stored tool count and duration
+  instead of a made-up "1ms".
+
 ## [2.0.1] - 2026-11-15
 
 ### Fixed
