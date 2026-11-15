@@ -21,7 +21,7 @@ test("streamed text and thinking become blocks of one message", () => {
   assert.equal(conv.busy, false);
   assert.equal(conv.items[1].status, "done");
   assert.equal(conv.items[1].turn.total, 12);
-  assert.deepEqual(conv.items.at(-1).usage, { input: 10, output: 2, cacheRead: 0, ms: conv.items.at(-1).usage.ms, ttftMs: conv.items.at(-1).usage.ttftMs });
+  assert.deepEqual(conv.items.at(-1).usage, { input: 10, output: 2, cacheRead: 0, prompt: 10, ms: conv.items.at(-1).usage.ms, ttftMs: conv.items.at(-1).usage.ttftMs });
 });
 
 test("a tool call streams its arguments, runs and settles", () => {
@@ -182,4 +182,27 @@ test("a reply from a different model is marked once, and an image block is kept"
   ]);
   assert.deepEqual(conv.items.map(item => [item.kind, item.text]), [["user", "a"], ["assistant", "x"], ["assistant", "y"], ["notice", "Model: two"], ["assistant", "z"], ["assistant", ""]]);
   assert.equal(conv.items.at(-1).images.length, 1);
+});
+
+test("the context breakdown is exact from the second request on", async () => {
+  const { contextBreakdown } = await import("../dist/context.js");
+  const conv = new Conversation();
+  conv.loadMessages([
+    { role: "user", content: "x".repeat(400) },
+    // Request 1 sent 3,100 tokens (system, tools and the first message) and the model wrote 50.
+    { role: "assistant", content: [{ type: "toolCall", id: "b1", name: "bash", arguments: { command: "ls" } }], usage: { input: 100, cacheRead: 3000, cacheWrite: 0, output: 50, totalTokens: 3150 } },
+    { role: "toolResult", toolCallId: "b1", content: [{ type: "text", text: "y".repeat(2000) }] },
+    // Request 2 sent 3,650: the 3,100, the 50 written, and so exactly 500 of tool result.
+    { role: "assistant", content: [{ type: "text", text: "done" }], usage: { input: 550, cacheRead: 3100, cacheWrite: 0, output: 20, totalTokens: 3670 } },
+    { role: "user", content: "and now?" },
+    // Request 3 sent 3,690: the 3,650, the 20 written, and exactly 20 of new message.
+    { role: "assistant", content: [{ type: "text", text: "now" }], usage: { input: 40, cacheRead: 3650, cacheWrite: 0, output: 5, totalTokens: 3695 } },
+  ]);
+  const rows = Object.fromEntries(contextBreakdown(conv.items, 3695).map(row => [row.label, [row.value, row.exact]]));
+  assert.deepEqual(rows["Written by the model"], [75, true]);
+  assert.deepEqual(rows["Tool results"], [500, true]);
+  // 100 estimated for the first message (400 characters), 20 counted for the second.
+  assert.deepEqual(rows["Your messages"], [120, false]);
+  assert.deepEqual(rows["System prompt, tools and summaries"], [3000, false]);
+  assert.equal(Object.values(rows).reduce((sum, [value]) => sum + value, 0), 3695, "the rows add up to pi's total");
 });

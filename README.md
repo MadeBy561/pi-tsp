@@ -242,9 +242,9 @@ PI_TSP_RECORD=/tmp/pi-tsp.jsonl pi-tsp
   its outcome. `/trace` turns the tracing off.
 - Signing in is pi's own flow: `/login` hands the pane to pi for it and takes
   it back when pi exits. pi's RPC mode has no login to draw natively.
-- In `/context` the total and what the model wrote are pi's own counts. How
-  the rest divides between your messages, tool results and the system prompt
-  is an estimate, because pi does not break it down.
+- `/context` is exact from pi's per-request counts, except for one split:
+  the first request holds the system prompt, the tool schemas and your first
+  message as a single number, and that message's share is estimated.
 - Subagent rows need `pi-subagents` or `@tintinweb/pi-subagents`; pi has no
   subagents of its own.
 - pi does not say which tool call an approval is for; pi-tsp marks the call
@@ -265,6 +265,7 @@ src/splice.ts           mid-text edits as splice ops
 src/region.ts           the transcript reconciled block by block
 src/shell.ts            a shell command as rows for Tern's command pane
 src/chart.ts            bar charts for tables of numbers
+src/context.ts          the context window breakdown from pi's per-request counts
 src/provider.ts         which logo a model gets
 src/view/               items and state -> nodes (transcript, tools, dock, overlays)
 src/rpc.ts              pi --mode rpc child and JSONL protocol

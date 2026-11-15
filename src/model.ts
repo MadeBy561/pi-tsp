@@ -101,7 +101,7 @@ export interface Item {
   /** The todos still open when a run ended (kind `reminder`). */
   open?: TodoPhase[];
   /** A message's token usage (kind `usage`). */
-  usage?: { input: number; output: number; cacheRead: number; ms: number; ttftMs: number };
+  usage?: { input: number; output: number; cacheRead: number; ms: number; ttftMs: number; /** Everything the request sent: new, cached and newly cached input. */ prompt: number };
   excluded?: boolean;
 }
 
@@ -805,6 +805,7 @@ export class Conversation {
             input: (usage.input || 0) + (usage.cacheWrite || 0),
             output: usage.output || 0,
             cacheRead: usage.cacheRead || 0,
+            prompt: (usage.input || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0),
             // Timings exist only for a message seen streaming, not one loaded from disk.
             ms: live ? now - pending.startedAt : 0,
             ttftMs: live ? pending.firstTokenAt - pending.startedAt : 0,

@@ -86,8 +86,10 @@ native components the way omp's surface is.
 - A run that ends with todos still open leaves a reminder of them.
 - Background subagents still running show as a pill above the composer; a
   click lists them.
-- `/context` counts what the model wrote exactly, from pi's own per-reply
-  figures, and marks the rest (what it was given) as an estimate.
+- `/context` is worked out from pi's own counts for each request: what the
+  model wrote, and by subtraction what each tool result and message added.
+  Only the first request, which holds the system prompt, the tool schemas
+  and your first message in one number, is split by an estimate.
 - A `!` draft shows a bash chip in place of its sigil and highlights as bash.
 - Editor keys follow `keybindings.json` too (`tui.editor.*`, `tui.input.*`).
 - In a Tern pane the surface opens and draws before Tern's `hello` reply
