@@ -74,7 +74,8 @@ native components the way omp's surface is.
   pane's menu) opens the run in an inspector that replays it step by step.
   A bundled extension adds a one-line prelude to the call that turns on
   bash's own tracing into a private file; only line numbers and times are
-  kept, never the expanded text. `/trace` turns it off.
+  kept, never the expanded text. A command that uses `set -x` or `PS4`
+  itself is left alone. `/trace` turns it off.
 - `$EDITOR` and `/login` hand the whole pane over and take it back with the
   transcript intact.
 - A table of numbers in a reply is followed by a bar chart of it, drawn in

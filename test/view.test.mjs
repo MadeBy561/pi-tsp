@@ -380,6 +380,9 @@ test("the trace extension keeps line numbers and times, never the expanded text"
   assert.deepEqual(steps, [{ line: 1, at: 0, depth: 1 }, { line: 2, at: 10, depth: 1 }, { line: 3, at: 20.5, depth: 2 }, { line: 3, at: 30, depth: 1 }]);
   assert.equal(trimmed, false);
   assert.equal(JSON.stringify(steps).includes("secret"), false);
+  const { usesTracing } = await import("../ext/trace.ts");
+  for (const command of ["set -x; make", "set -euxo pipefail\nls", "set -o xtrace", "PS4='> ' bash build.sh", "exec 5>log; BASH_XTRACEFD=5"]) assert.equal(usesTracing(command), true, command);
+  for (const command of ["ls -la", "set -e; make", "tar -xzf a.tgz", "bash -x build.sh"]) assert.equal(usesTracing(command), false, command);
 });
 
 test("a traced run shows what happened on each line, and replays step by step", async () => {

@@ -47,6 +47,11 @@ export function parseTrace(text: string): { steps: Step[]; trimmed: boolean } {
   return { steps, trimmed: total > steps.length };
 }
 
+/** Whether a command turns on, redirects or formats bash's tracing on its own. */
+export function usesTracing(command: string): boolean {
+  return /\bset\s+[-+][a-wyzA-Z]*x|\bset\s+[-+]o\s+xtrace|BASH_XTRACEFD|\bPS4=/.test(command);
+}
+
 export default function shellTrace(pi: Pi) {
   let enabled = true;
   let dir = "";
@@ -63,6 +68,8 @@ export default function shellTrace(pi: Pi) {
 
   pi.on("tool_call", async (event: any) => {
     if (!enabled || event.toolName !== "bash" || typeof event.input?.command !== "string" || !event.input.command.trim()) return;
+    // A command that drives tracing itself keeps it: ours would swallow the trace it expects to see.
+    if (usesTracing(event.input.command)) return;
     // A directory only this user can read: the raw trace holds expanded values until it is parsed.
     dir ||= mkdtempSync(join(tmpdir(), "pi-tsp-trace-"));
     const file = join(dir, `${++count}`);
