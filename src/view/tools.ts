@@ -550,6 +550,8 @@ export function toolNode(item: Item, ctx: ViewCtx): Node {
       ...timing(item),
       ...(item.status === "cancelled" ? { note: "cancelled" } : {}),
       ...view.props,
+      // Compact: every call a one-line row, opened on demand.
+      ...(ctx.compactTools ? { frame: "inline", ...(view.props["collapsible"] ? { collapsed: collapsed(ctx, item.id, true) } : {}) } : {}),
       // pi does not say which call an approval is for; the one running with nothing to show yet is it.
       ...(ctx.awaitingApproval && item.status === "running" && !item.output ? { status: "pending", note: "awaiting approval", age: undefined } : {}),
       onToggle: (event: ToggleEvent) => ctx.on.toggle(item.id, event.collapsed === true),

@@ -2,8 +2,9 @@
  * The transcript: the welcome block, then one block per message, tool call,
  * summary and notice, in order.
  */
+import { withCharts } from "../chart.js";
 import type { Conversation, Item } from "../model.js";
-import { clock, collapsed, duration, firstLine, h, money, s, tokens, type Node, type ToggleEvent, type ViewCtx } from "./h.js";
+import { clock, collapsed, duration, fileHref, firstLine, h, money, plural, s, tokens, type Node, type ToggleEvent, type ViewCtx } from "./h.js";
 import { agentNode, executionNode, readGroupNode, toolNode } from "./tools.js";
 
 export interface WelcomeInfo {
@@ -51,7 +52,26 @@ export function welcome(info: WelcomeInfo): Node {
   ]);
 }
 
+/** pi wraps an invoked skill's text in this block, with what the user typed after it. */
+const SKILL_BLOCK = /^<skill name="([^"]+)" location="([^"]+)">\n([\s\S]*?)\n<\/skill>(?:\n\n([\s\S]+))?$/;
+
+/** A `/skill:name` prompt: the skill as a chip, what was typed with it, and the skill's text folded away. */
+function skillNode(item: Item, match: RegExpMatchArray, ctx: ViewCtx): Node {
+  const [, name = "unknown", location = "", prompt = "", draft = ""] = match;
+  const lines = prompt.split("\n").length;
+  return h("card", { key: item.id, role: "omp.skill", tone: "user", head: [s(name, "customMessageLabel strong", { href: fileHref(location, ctx.cwd) }), s(`  ${plural(lines, "line")}`, "muted")] }, [
+    draft.trim() ? h("md", { key: "draft", text: draft.trim() }) : null,
+    h(
+      "section",
+      { key: "prompt", role: "omp.skill.prompt", head: [s("prompt", "muted")], collapsible: true, collapsed: collapsed(ctx, `${item.id}.prompt`, true), onToggle: (event: ToggleEvent) => ctx.on.toggle(`${item.id}.prompt`, event.collapsed === true) },
+      [h("md", { key: "text", text: prompt })],
+    ),
+  ]);
+}
+
 function userNode(item: Item, ctx: ViewCtx): Node {
+  const skill = item.text.match(SKILL_BLOCK);
+  if (skill) return skillNode(item, skill, ctx);
   const images = (item.images || []).map((image, index) => {
     const blob = ctx.showImages ? ctx.blob(image) : undefined;
     return blob
@@ -136,7 +156,15 @@ function assistantNode(items: Item[], conv: Conversation, ctx: ViewCtx): Node | 
     if (item.kind === "thinking") {
       if (!ctx.hideThinking && item.text.trim()) children.push(thinkingNode(item, ctx));
     } else {
-      if (item.text) children.push(h("md", { key: item.id, text: item.text, ...(item.status === "running" ? { stream: true } : {}) }));
+      if (item.text) {
+        const live = item.status === "running";
+        const parts = ctx.showCharts && ctx.showImages ? withCharts(item.text, live) : [{ text: item.text, chart: false }];
+        parts.forEach((part, index) => {
+          // Only the last piece of prose can still be arriving; a chart never is.
+          const streaming = live && !part.chart && index === parts.length - 1;
+          children.push(h("md", { key: index ? `${item.id}.${index}` : item.id, text: part.text, ...(part.chart ? { role: "omp.figure" } : {}), ...(streaming ? { stream: true } : {}) }));
+        });
+      }
       for (const [index, image] of (item.images ?? []).entries()) {
         const blob = ctx.showImages ? ctx.blob(image) : undefined;
         children.push(
@@ -277,6 +305,21 @@ function errorNode(item: Item, ctx: ViewCtx): Node {
   ]);
 }
 
+/** The todos a run left open, as omp's reminder notice. */
+function reminderNode(item: Item): Node | null {
+  const phases = item.open ?? [];
+  const count = phases.reduce((sum, phase) => sum + phase.items.length, 0);
+  if (!count) return null;
+  return h("checklist", {
+    key: item.id,
+    role: "omp.notice.todo",
+    // Tern words the count itself ("1 todo still open").
+    mode: "reminder",
+    phases: phases.map(phase => ({ id: phase.id, title: phase.name, items: phase.items.map(todo => ({ id: `${phase.id}.${todo.id}`, text: todo.text, status: todo.status, ...(todo.note ? { note: todo.note } : {}) })) })),
+  });
+}
+
+const isCall = (item: Item): boolean => item.kind === "tool" || item.kind === "agent";
 const isRead = (item: Item): boolean => item.kind === "tool" && String(item.name).toLowerCase() === "read" && item.status !== "error";
 const isProse = (item: Item): boolean => item.kind === "assistant" || item.kind === "thinking";
 
@@ -296,6 +339,25 @@ function blocks(conv: Conversation, ctx: ViewCtx): Block[] {
       while (at + run.length < items.length && isProse(items[at + run.length]!) && items[at + run.length]!.msg === item.msg) run.push(items[at + run.length]!);
       const group = run;
       out.push({ items: group, build: () => assistantNode(group, conv, ctx) });
+    } else if (ctx.compactTools && isCall(item)) {
+      // Compact: a run of calls closes up into one gapless group.
+      while (at + run.length < items.length && isCall(items[at + run.length]!)) run.push(items[at + run.length]!);
+      const group = run;
+      out.push({
+        items: group,
+        build: () => {
+          const nodes: Node[] = [];
+          for (let index = 0; index < group.length; ) {
+            const call = group[index]!;
+            let reads = 1;
+            while (isRead(call) && index + reads < group.length && isRead(group[index + reads]!)) reads += 1;
+            const node = reads > 1 ? readGroupNode(group.slice(index, index + reads), ctx) : blockOf(call, ctx);
+            if (node) nodes.push(node);
+            index += reads;
+          }
+          return nodes.length > 1 ? h("col", { key: group[0]!.id, role: "omp.compact", gap: "none" }, nodes) : (nodes[0] ?? null);
+        },
+      });
     } else if (isRead(item)) {
       while (at + run.length < items.length && isRead(items[at + run.length]!)) run.push(items[at + run.length]!);
       const group = run;
@@ -332,6 +394,8 @@ function blockOf(item: Item, ctx: ViewCtx): Node | null {
       return errorNode(item, ctx);
     case "usage":
       return usageNode(item, ctx);
+    case "reminder":
+      return reminderNode(item);
     default:
       return null;
   }
@@ -346,7 +410,7 @@ export class TranscriptView {
   #cache = new Map<string, { rev: string; items: Item[]; versions: number[]; node: Node | null }>();
 
   build(conv: Conversation, ctx: ViewCtx): Node[] {
-    const rev = `${ctx.foldRev}:${ctx.awaitingApproval}`;
+    const rev = `${ctx.foldRev}:${ctx.awaitingApproval}:${ctx.compactTools}`;
     const seen = new Set<string>();
     const out: Node[] = [];
     for (const block of blocks(conv, ctx)) {

@@ -102,6 +102,16 @@ export class BlockRegion {
     return this.#byKey.get(key)?.view.find(id);
   }
 
+  /** The wire id of the node keyed `key`: a block itself, or a node one level inside a grouped block. */
+  locate(key: string): string | undefined {
+    if (this.#byKey.has(key)) return `${this.id}.${key}`;
+    for (const block of this.#blocks) {
+      const id = `${this.id}.${block.key}.${key}`;
+      if (block.view.find(id)) return id;
+    }
+    return undefined;
+  }
+
   /**
    * Runs the handler a node of this region carries for `event`, as the SDK
    * does for the views it renders. False when no node or handler takes it.

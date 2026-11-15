@@ -43,7 +43,8 @@ export interface Item {
     | "python"
     | "notice"
     | "error"
-    | "usage";
+    | "usage"
+    | "reminder";
   id: string;
   /** Bumped on every change, so a renderer can keep what it built. */
   v: number;
@@ -97,6 +98,8 @@ export interface Item {
   cancelled?: boolean;
   truncated?: boolean;
   tone?: "muted" | "warning" | "error" | "info";
+  /** The todos still open when a run ended (kind `reminder`). */
+  open?: TodoPhase[];
   /** A message's token usage (kind `usage`). */
   usage?: { input: number; output: number; cacheRead: number; ms: number; ttftMs: number };
   excluded?: boolean;
@@ -720,6 +723,11 @@ export class Conversation {
         }
       }
     }
+    // A run that ends with todos still open says so, where it ended.
+    const open = (this.todos ?? [])
+      .map(phase => ({ ...phase, items: phase.items.filter(item => item.status === "pending" || item.status === "active" || item.status === "blocked") }))
+      .filter(phase => phase.items.length);
+    if (wasBusy && open.length) this.add({ kind: "reminder", open }, "r");
     this.runStartedAt = 0;
     this.touch();
   }

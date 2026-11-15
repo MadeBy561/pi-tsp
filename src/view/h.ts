@@ -35,6 +35,10 @@ export interface ViewCtx {
   expandAll: boolean;
   hideThinking: boolean;
   showImages: boolean;
+  /** Draw tool calls as one-line rows, runs of them closed up. */
+  compactTools: boolean;
+  /** Follow a table of numbers in a reply with a bar chart of it. */
+  showCharts: boolean;
   /** Draw a token usage line under each assistant message. */
   showUsage: boolean;
   /** An approval is open: the tool call that is running is waiting on it. */

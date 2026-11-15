@@ -170,6 +170,8 @@ export class App {
   #hideThinking = false;
   #showImages = true;
   #showUsage = false;
+  #showCharts = true;
+  #compactTools = false;
   #vimKeys = false;
   #vim = new Vim(this.editor);
   /** A rewind point is being chosen: the user messages that can be forked from, and which one. */
@@ -580,6 +582,8 @@ export class App {
       hideThinking: this.#hideThinking,
       showImages: this.#showImages,
       showUsage: this.#showUsage,
+      showCharts: this.#showCharts,
+      compactTools: this.#compactTools,
       awaitingApproval: this.#approvals.length > 0,
       fold: this.#fold,
       shell: this.#shellPrefs,
@@ -2202,7 +2206,8 @@ export class App {
       choose: id => {
         this.#picker = null;
         this.render();
-        this.#surface.reveal(`main.${id}`, "start");
+        const target = this.#main.locate(id);
+        if (target) this.#surface.reveal(target, "start");
       },
     });
   }
@@ -2508,6 +2513,8 @@ export class App {
           { id: "hide-thinking", label: "Hide thinking", hint: "Leave the model's reasoning out of the transcript  Ctrl+T", changed: this.#hideThinking, defaultLabel: "off", control: { k: "switch", on: this.#hideThinking } },
           { id: "vim-keys", label: "Vim keys", hint: "Normal, Insert and Visual modes in the composer; Esc leaves Insert mode", changed: this.#vimKeys, defaultLabel: "off", control: { k: "switch", on: this.#vimKeys } },
           { id: "show-usage", label: "Token usage per message", hint: "A line under each reply with its tokens, time to first token and speed", changed: this.#showUsage, defaultLabel: "off", control: { k: "switch", on: this.#showUsage } },
+          { id: "compact-tools", label: "Compact tool calls", hint: "Draw each tool call as one line, and close runs of them up", changed: this.#compactTools, defaultLabel: "off", control: { k: "switch", on: this.#compactTools } },
+          { id: "show-charts", label: "Chart tables of numbers", hint: "Follow a table of numbers in a reply with a bar chart of it", changed: !this.#showCharts, defaultLabel: "on", control: { k: "switch", on: this.#showCharts } },
           { id: "show-images", label: "Show images", hint: "Draw attached and tool-result images inline", changed: !this.#showImages, defaultLabel: "on", control: { k: "switch", on: this.#showImages } },
         ],
       },
@@ -2591,6 +2598,15 @@ export class App {
           this.#vimKeys = Boolean(value);
           this.#vim.reset();
           break;
+        case "compact-tools":
+          this.#compactTools = Boolean(value);
+          this.#fold.clear();
+          this.#foldRev += 1;
+          break;
+        case "show-charts":
+          this.#showCharts = value === null ? true : Boolean(value);
+          this.#foldRev += 1;
+          break;
         case "show-usage":
           this.#showUsage = Boolean(value);
           this.#foldRev += 1;
@@ -2618,6 +2634,8 @@ export class App {
       this.#showImages = stored.showImages !== false;
       this.#showUsage = stored.showUsage === true;
       this.#vimKeys = stored.vimKeys === true;
+      this.#showCharts = stored.showCharts !== false;
+      this.#compactTools = stored.compactTools === true;
     } catch {
       /* defaults */
     }
@@ -2626,7 +2644,7 @@ export class App {
   #saveDisplay(): void {
     try {
       mkdirSync(piTspHome(), { recursive: true, mode: 0o700 });
-      writeFileSync(this.#displayPath(), JSON.stringify({ expandAll: this.#expandAll, hideThinking: this.#hideThinking, showImages: this.#showImages, showUsage: this.#showUsage, vimKeys: this.#vimKeys }), { mode: 0o600 });
+      writeFileSync(this.#displayPath(), JSON.stringify({ expandAll: this.#expandAll, hideThinking: this.#hideThinking, showImages: this.#showImages, showUsage: this.#showUsage, vimKeys: this.#vimKeys, showCharts: this.#showCharts, compactTools: this.#compactTools }), { mode: 0o600 });
     } catch {
       /* a preference that is not saved still applies now */
     }

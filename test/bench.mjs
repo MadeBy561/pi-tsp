@@ -5,7 +5,7 @@ import { BlockRegion } from "../dist/region.js";
 import { TranscriptView } from "../dist/view/transcript.js";
 
 const noop = () => undefined;
-const ctx = { cwd: "/proj", kinds: new Set(["json"]), hour12: false, expandAll: false, hideThinking: false, showImages: true, showUsage: false, awaitingApproval: false, fold: new Map(), shell: new Map(), foldRev: 0, blob: noop, on: { toggle: noop, copy: noop, rewind: noop, editTurn: noop, retry: noop, pickModel: noop, openAgent: noop, open: noop, shell: noop } };
+const ctx = { cwd: "/proj", kinds: new Set(["json"]), hour12: false, expandAll: false, hideThinking: false, showImages: true, showUsage: false, showCharts: true, compactTools: false, awaitingApproval: false, fold: new Map(), shell: new Map(), foldRev: 0, blob: noop, on: { toggle: noop, copy: noop, rewind: noop, editTurn: noop, retry: noop, pickModel: noop, openAgent: noop, open: noop, shell: noop } };
 const body = "A paragraph of answer text with `code` and **emphasis** in it. ".repeat(12);
 
 for (const turns of [50, 500, 2000]) {

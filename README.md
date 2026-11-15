@@ -56,7 +56,7 @@ behaves like the rest of Tern.
 
 | Area | What you get |
 |---|---|
-| Transcript | Markdown answers that stream, collapsible thinking with its duration, a per-turn footer (time, tokens, cost, copy), a frame for failed requests with Retry, compaction and branch summaries, extension messages |
+| Transcript | Markdown answers that stream, collapsible thinking with its duration, a per-turn footer (time, tokens, cost, copy), a frame for failed requests with Retry, compaction and branch summaries, extension messages, bar charts after tables of numbers, skill prompts as chips |
 | Tools | `bash` with live output and a run footer, `edit` as a diff that streams with the model's arguments, `write`, `read` (consecutive reads grouped), `grep` / `find` / `ls` with counts, `todo` as a checklist, any other tool with its arguments and JSON or text result |
 | Subagents | `pi-subagents` and `@tintinweb/pi-subagents` runs as agent rows with model, tool count, tokens and time; a transcript sheet for each |
 | Composer | Selection, undo and redo, word and line motions, optional Vim keys, large pastes as chips, image paste and `/attach`, `$EDITOR` with Ctrl+G, prompt history with search |
@@ -251,6 +251,7 @@ src/vim.ts              Vim modes over the composer's editor
 src/splice.ts           mid-text edits as splice ops
 src/region.ts           the transcript reconciled block by block
 src/shell.ts            a shell command as rows for Tern's command pane
+src/chart.ts            bar charts for tables of numbers
 src/provider.ts         which logo a model gets
 src/view/               items and state -> nodes (transcript, tools, dock, overlays)
 src/rpc.ts              pi --mode rpc child and JSONL protocol

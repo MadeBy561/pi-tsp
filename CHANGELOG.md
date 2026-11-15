@@ -71,6 +71,13 @@ native components the way omp's surface is.
   shown as that language, and how long it ran.
 - `$EDITOR` and `/login` hand the whole pane over and take it back with the
   transcript intact.
+- A table of numbers in a reply is followed by a bar chart of it, drawn in
+  the theme's colours (Settings › Display to turn it off).
+- `/skill:name` prompts show the skill as a chip with its text folded away
+  instead of the whole expanded prompt.
+- Compact tool calls (Settings › Display): each call one line, runs of them
+  closed up.
+- A run that ends with todos still open leaves a reminder of them.
 - A `!` draft shows a bash chip in place of its sigil and highlights as bash.
 - Editor keys follow `keybindings.json` too (`tui.editor.*`, `tui.input.*`).
 - In a Tern pane the surface opens and draws before Tern's `hello` reply

@@ -13,7 +13,7 @@ import { h } from "../dist/view/h.js";
 
 const noop = () => undefined;
 const ctx = (extra = {}) => ({
-  cwd: "/proj", kinds: new Set(["json"]), hour12: false, expandAll: false, hideThinking: false, showImages: true, showUsage: false, awaitingApproval: false,
+  cwd: "/proj", kinds: new Set(["json"]), hour12: false, expandAll: false, hideThinking: false, showImages: true, showUsage: false, showCharts: true, compactTools: false, awaitingApproval: false,
   fold: new Map(), shell: new Map(), foldRev: 0, blob: () => undefined,
   on: { toggle: noop, copy: noop, rewind: noop, editTurn: noop, retry: noop, pickModel: noop, openAgent: noop, open: noop, shell: noop },
   ...extra,
@@ -305,4 +305,55 @@ test("the bash tool uses the command pane when the terminal has one, code otherw
   assert.equal(pane.kind, "shell");
   assert.equal(pane.props.presentation.rows[0].segments[0].style, "cmd");
   assert.equal([...kinds({ kinds: new Set() }).values()].some(tree => tree.kind === "shell"), false);
+});
+
+test("a table of numbers in a reply is followed by a bar chart, once it has arrived", async () => {
+  const { chartTables, withCharts } = await import("../dist/chart.js");
+  const text = "Timings:\n\n| Step | Time |\n|---|---|\n| build | 120 ms |\n| test | 1,450 ms |\n| lint | 80 ms |\n\nDone.";
+  const [table] = chartTables(text, false);
+  assert.deepEqual([table.title, table.unit, table.rows], ["Time by Step", "ms", [{ label: "build", value: 120 }, { label: "test", value: 1450 }, { label: "lint", value: 80 }]]);
+  const parts = withCharts(text, false);
+  assert.deepEqual(parts.map(part => part.chart), [false, true, false]);
+  assert.match(parts[1].text, /^```svg\n<svg[^>]*aria-label="bar chart of Time by Step"/);
+  assert.ok(parts[1].text.includes('fill="var(--accent)"') && !/#[0-9a-f]{3,6}"/i.test(parts[1].text), "theme colours, never baked ones");
+  assert.equal(parts[2].text, "Done.");
+  assert.deepEqual(withCharts("| a | b |\n|---|---|\n| x | y |\n| z | w |", false).map(part => part.chart), [false], "no numbers, no chart");
+  assert.equal(chartTables("| Step | Time |\n|---|---|\n| a | 1 |\n| b | 2 |", true).length, 0, "a table still arriving gets none");
+  const conv = new Conversation();
+  conv.loadMessages([{ role: "assistant", content: [{ type: "text", text }] }]);
+  const kinds = extra => View.from({ main: h("col", { key: "main" }, new TranscriptView().build(conv, ctx(extra))) }).regions[0].children[0].children.map(tree => tree.props.role ?? "md");
+  assert.deepEqual(kinds({}), ["md", "omp.figure", "md"]);
+  assert.deepEqual(kinds({ showCharts: false }), ["md"]);
+});
+
+test("an invoked skill is a chip with its text folded away, not a wall of prompt", () => {
+  const conv = new Conversation();
+  conv.loadMessages([{ role: "user", content: '<skill name="review" location="/skills/review/SKILL.md">\nReferences are relative to /skills/review.\n\nRead the diff.\nList risks.\n</skill>\n\nfocus on auth' }]);
+  const card = View.from({ main: h("col", { key: "main" }, new TranscriptView().build(conv, ctx())) }).regions[0].children[0];
+  assert.equal(card.props.role, "omp.skill");
+  assert.deepEqual(card.props.head.map(span => span.t), ["review", "  4 lines"]);
+  assert.deepEqual(card.children.map(child => [child.kind, child.props.collapsed]), [["md", undefined], ["section", true]]);
+  assert.equal(card.children[0].props.text, "focus on auth");
+});
+
+test("compact mode closes a run of calls into one gapless group of one-line rows", () => {
+  const conv = new Conversation();
+  conv.loadMessages(session);
+  const top = extra => View.from({ main: h("col", { key: "main" }, new TranscriptView().build(conv, ctx(extra))) }).regions[0].children;
+  const group = top({ compactTools: true }).find(tree => tree.props.role === "omp.compact");
+  assert.equal(group.props.gap, "none");
+  assert.deepEqual(group.children.map(child => [child.props.role, child.props.frame]), [["omp.tool.read", "inline"], ["omp.tool.bash", "inline"], ["omp.tool.edit", "inline"], ["omp.tool.mystery_tool", "inline"]]);
+  assert.equal(top({}).some(tree => tree.props.role === "omp.compact"), false);
+});
+
+test("a run that ends with todos open leaves a reminder of them", () => {
+  const conv = new Conversation();
+  conv.onEvent({ type: "agent_start" });
+  conv.onEvent({ type: "message_start", message: { role: "assistant" } });
+  conv.onEvent({ type: "message_update", assistantMessageEvent: { type: "toolcall_end", contentIndex: 0, toolCall: { id: "t1", name: "todo", arguments: { action: "add" } } } });
+  conv.onEvent({ type: "tool_execution_end", toolCallId: "t1", result: { content: [], details: { todos: [{ id: 1, text: "ship it", done: false }, { id: 2, text: "wrote it", done: true }] } } });
+  conv.onEvent({ type: "agent_settled" });
+  const reminder = View.from({ main: h("col", { key: "main" }, new TranscriptView().build(conv, ctx())) }).regions[0].children.at(-1);
+  assert.deepEqual([reminder.kind, reminder.props.role, reminder.props.mode], ["checklist", "omp.notice.todo", "reminder"]);
+  assert.deepEqual(reminder.props.phases[0].items.map(item => item.text), ["ship it"]);
 });
