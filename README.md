@@ -62,7 +62,7 @@ behaves like the rest of Tern.
 | Composer | Selection, undo and redo, word and line motions, optional Vim keys, large pastes as chips, image paste and `/attach`, `$EDITOR` with Ctrl+G, prompt history with search |
 | Completion | A popup at the caret for `/` commands (pi-tsp's and pi's) and `@` files with fuzzy matching |
 | While pi works | A working row with what it is doing, the todo list as a HUD, steering by typing, a queue for follow-ups (Alt+Enter) you can pull back (Alt+Up), Esc to stop |
-| Pickers | Models (search, providers, capabilities, price, details, maker logos), thinking effort, sessions (search, this folder or all projects, preview, rename, delete), session tree, fork, copy; a rewind page that marks the chosen message in the transcript |
+| Pickers | Models (search, providers, capabilities, price, details, maker logos), thinking effort, sessions (search, this folder or all projects, preview, rename, delete), session tree, fork, copy; a rewind page that replays the transcript with the chosen message marked |
 | Settings | A native settings window: model, thinking effort, auto-compact, auto-retry, queue modes, display options |
 | Approvals | A panel above the composer showing what is asked and the request's own choices; extension `select`, `confirm`, `input` and `editor` dialogs |
 | Shell | `!command` runs in the session with streaming output; `!!command` keeps it out of the model's context |
@@ -227,14 +227,15 @@ PI_TSP_RECORD=/tmp/pi-tsp.jsonl pi-tsp
   have no counterpart here.
 - The look depends on the `omp.*` roles Tern styles. If Tern renames them,
   pi-tsp keeps working but loses that styling until it follows.
+- The command pane shows the script and its outcome. omp's also replays the
+  run step by step, from a trace only its own shell produces.
 - Signing in is pi's own flow: `/login` hands the pane to pi for it and takes
   it back when pi exits. pi's RPC mode has no login to draw natively.
+- The split in `/context` is an estimate; pi reports only the total.
 - Subagent rows need `pi-subagents` or `@tintinweb/pi-subagents`; pi has no
   subagents of its own.
 - pi does not say which tool call an approval is for; pi-tsp marks the call
   that is running with no output yet as awaiting approval.
-- Streaming is as fine as pi's RPC makes it: text and tool arguments by delta,
-  tool output by update.
 
 ## Repository
 
@@ -249,6 +250,7 @@ src/keymap.ts           shortcuts by pi action name, with keybindings.json overr
 src/vim.ts              Vim modes over the composer's editor
 src/splice.ts           mid-text edits as splice ops
 src/region.ts           the transcript reconciled block by block
+src/shell.ts            a shell command as rows for Tern's command pane
 src/provider.ts         which logo a model gets
 src/view/               items and state -> nodes (transcript, tools, dock, overlays)
 src/rpc.ts              pi --mode rpc child and JSONL protocol

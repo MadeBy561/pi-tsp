@@ -3,7 +3,8 @@
  * over a body built from the call's arguments and result.
  */
 import type { Item } from "../model.js";
-import { collapsed, duration, fileHref, firstLine, h, head, plural, s, showPath, tail, tokens, type Node, type Text, type ToggleEvent, type ViewCtx } from "./h.js";
+import { shellPresentation } from "../shell.js";
+import { collapsed, duration, fileHref, firstLine, h, head, plural, s, showPath, tail, tokens, type Node, type ActionEvent, type ChangeEvent, type Text, type ToggleEvent, type ViewCtx } from "./h.js";
 
 interface Hunk {
   oldStart: number;
@@ -141,11 +142,34 @@ function runFoot(item: Item, running: boolean): Node {
 }
 
 /** The run box of a shell command: the command, its output, the foot. */
-export function runBox(item: Item, command: string, lang: string, role: string, showInput: boolean): Node {
+export function runBox(item: Item, command: string, lang: string, role: string, showInput: boolean, ctx: ViewCtx): Node {
   const running = item.status === "running" || item.status === "pending";
   const output = item.output ? tail(item.output.replace(/\s+$/, "")) : "";
+  const script = command.trimEnd();
+  // Tern's command pane where there is one and the script is a shell's; highlighted code otherwise.
+  const pane = lang === "bash" && ctx.kinds.has("shell");
+  const use = (value: unknown): void => ctx.on.shell(item.id, String(value ?? ""));
+  const input = !showInput
+    ? null
+    : pane
+      ? h("shell", {
+          key: "input",
+          role: `${role}.command`,
+          lang: "bash",
+          presentation: shellPresentation(
+            script,
+            { running, failed: item.status === "error", ...(!running && item.durationMs != null ? { took: duration(item.durationMs) } : {}) },
+            ctx.shell.get(item.id) ?? { view: "pseudo", color: true },
+          ),
+          replayEpoch: 0,
+          liveOrigin: running,
+          preview: { lines: 6 },
+          onAction: { "shell-viz": (event: ActionEvent) => use(event.value) },
+          onChange: (event: ChangeEvent) => use(event.item === "view" || event.item === "layer" ? `${event.item}:${String(event.value)}` : event.item),
+        })
+      : h("code", { key: "input", role: `${role}.command`, lang, wrap: true, preview: { lines: 6 }, text: script });
   return h("col", { key: "run", role: "omp.run", gap: "none", ...(item.status === "error" ? { tone: "error" } : {}) }, [
-    showInput ? h("code", { key: "input", role: `${role}.command`, lang, wrap: true, preview: { lines: 6 }, text: command.trimEnd() }) : null,
+    input,
     output ? h("ansi", { key: "output", role: `${role}.output`, follow: true, preview: { lines: 10 }, text: output }) : null,
     runFoot(item, running),
   ]);
@@ -160,9 +184,8 @@ function bashView(item: Item, ctx: ViewCtx): ToolView {
   return {
     props: {
       title: "Bash",
-      target: described ? firstLine(args.description, 100) : firstLine(command, 100),
-      targetKind: described ? "text" : "command",
-      ...(described ? {} : { lang: "bash" }),
+      // The pane below shows the script; the head says what it is for, or repeats it only where there is no pane.
+      ...(described ? { target: firstLine(args.description, 100), targetKind: "text" } : ctx.kinds.has("shell") ? {} : { target: firstLine(command, 100), targetKind: "command", lang: "bash" }),
       command,
       frame: "inline",
       collapsible: true,
@@ -170,7 +193,8 @@ function bashView(item: Item, ctx: ViewCtx): ToolView {
       preview: "children",
       ...(item.status === "error" && typeof exit === "number" && exit !== 0 ? { exit } : {}),
     },
-    body: command ? [runBox(item, command, "bash", "omp.tool.bash", Boolean(described) || !oneLine)] : [],
+    // With a command pane the script is always shown in it, as omp does; the head then carries the intent or first line.
+    body: command ? [runBox(item, command, "bash", "omp.tool.bash", ctx.kinds.has("shell") || Boolean(described) || !oneLine, ctx)] : [],
   };
 }
 
@@ -665,6 +689,6 @@ export function executionNode(item: Item, ctx: ViewCtx): Node {
       preview: "children",
       onToggle: (event: ToggleEvent) => ctx.on.toggle(item.id, event.collapsed === true),
     },
-    [runBox(item, item.text, python ? "python" : "bash", python ? "omp.tool.eval" : "omp.tool.bash", true)],
+    [runBox(item, item.text, python ? "python" : "bash", python ? "omp.tool.eval" : "omp.tool.bash", true, ctx)],
   );
 }

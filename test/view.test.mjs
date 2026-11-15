@@ -14,8 +14,8 @@ import { h } from "../dist/view/h.js";
 const noop = () => undefined;
 const ctx = (extra = {}) => ({
   cwd: "/proj", kinds: new Set(["json"]), hour12: false, expandAll: false, hideThinking: false, showImages: true, showUsage: false, awaitingApproval: false,
-  fold: new Map(), foldRev: 0, blob: () => undefined,
-  on: { toggle: noop, copy: noop, rewind: noop, editTurn: noop, retry: noop, pickModel: noop, openAgent: noop, open: noop },
+  fold: new Map(), shell: new Map(), foldRev: 0, blob: () => undefined,
+  on: { toggle: noop, copy: noop, rewind: noop, editTurn: noop, retry: noop, pickModel: noop, openAgent: noop, open: noop, shell: noop },
   ...extra,
 });
 const dockOn = { submit: noop, interrupt: noop, pickModel: noop, cycleEffort: noop, showContext: noop, showSession: noop, dequeue: noop, detach: noop, togglePlan: noop, edit: noop, undo: noop, send: noop };
@@ -278,4 +278,31 @@ test("a keystroke in the middle of a draft is one splice, not a re-send", async 
   const ops = first.ops(View.from({ dock: dock(conv, dockState({ editor }), dockOn) }), "pi");
   assert.deepEqual(ops.find(op => op[0] === "splice"), ["splice", EDITOR_ID, 6, 0, "brave "]);
   assert.equal(ops.some(op => op[0] === "text"), false);
+});
+
+test("a shell command becomes rows of semantic segments for Tern's command pane", async () => {
+  const { shellPresentation } = await import("../dist/shell.js");
+  const styles = (script, view = "pseudo") => shellPresentation(script, { running: false, failed: false, took: "0.1s" }, { view, color: true }).rows.map(row => row.segments.filter(segment => segment.text.trim()).map(segment => [segment.text, segment.style ?? segment.language ?? ""]));
+  assert.deepEqual(styles("ls -la ./src"), [[["ls", "cmd"], ["-la", "arg"], ["./src", "path"]]]);
+  assert.deepEqual(styles('FOO=1 grep -n "$HOME" a.txt | wc -l && echo done # count'), [[["FOO=1", "var"], ["grep", "cmd"], ["-n", "arg"], ['"$HOME"', "str"], ["a.txt", "path"], ["|", "op"], ["wc", "cmd"], ["-l", "arg"], ["&&", "op"], ["echo", "cmd"], ["done", ""], ["# count", "comment"]]]);
+  assert.deepEqual(styles(`python3 -c "print(1)"`), [[["python3", "cmd"], ["-c", "arg"], ["‹", "emb"], ["print(1)", "py"], ["›", "emb"]]]);
+  assert.deepEqual(styles(`python3 -c "print(1)"`, "raw")[0].at(-1), ['"print(1)"', "str"]);
+  const done = shellPresentation("rm -rf x\nsudo ls", { running: false, failed: true, took: "2s" }, { view: "pseudo", color: true });
+  assert.deepEqual(done.rows.map(row => [row.state, row.meta, row.effects.map(effect => effect.kind)]), [["fail", undefined, ["destructive"]], ["fail", "2s", ["privilege"]]]);
+  assert.deepEqual(done.rows[1].range, [9, 16]);
+  const live = shellPresentation("sleep 5", { running: true, failed: false }, { view: "pseudo", color: true });
+  assert.deepEqual([live.running, live.executing, live.rows[0].active, live.rows[0].state], [true, true, true, undefined]);
+});
+
+test("the bash tool uses the command pane when the terminal has one, code otherwise", () => {
+  const conv = new Conversation();
+  conv.loadMessages([
+    { role: "assistant", content: [{ type: "toolCall", id: "b1", name: "bash", arguments: { command: "ls -la" } }] },
+    { role: "toolResult", toolCallId: "b1", content: [{ type: "text", text: "total 0" }] },
+  ]);
+  const kinds = extra => index(View.from({ main: h("col", { key: "main" }, new TranscriptView().build(conv, ctx(extra))) }));
+  const pane = [...kinds({ kinds: new Set(["shell"]) }).values()].find(tree => tree.props.role === "omp.tool.bash.command");
+  assert.equal(pane.kind, "shell");
+  assert.equal(pane.props.presentation.rows[0].segments[0].style, "cmd");
+  assert.equal([...kinds({ kinds: new Set() }).values()].some(tree => tree.kind === "shell"), false);
 });

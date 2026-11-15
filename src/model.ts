@@ -580,6 +580,13 @@ export class Conversation {
           this.touch();
         } else if (entry.data?.todos || entry.data?.todoPhases || entry.data?.phases) {
           this.#noteTodos(entry.data);
+        } else if (entry.customType === "subagents:record" && entry.data?.id) {
+          // @tintinweb/pi-subagents records each run with the session file holding its transcript.
+          const agent = this.items.find(item => item.kind === "agent" && item.runId === entry.data.id);
+          if (agent && entry.data.sessionFile) {
+            agent.transcriptPath = entry.data.sessionFile;
+            this.bump(agent);
+          }
         } else if (entry.customType === "subagent-notification") {
           this.#agentNotification({
             content: entry.data?.content || entry.content,

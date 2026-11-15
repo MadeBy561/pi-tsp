@@ -23,6 +23,8 @@ export interface Actions {
   pickModel(): void;
   openAgent(item: Item): void;
   open(path: string): void;
+  /** A control of a command pane was used: `view:raw`, `view:pseudo`, `layer:color`. */
+  shell(id: string, value: string): void;
 }
 
 /** What a view needs beyond the conversation. */
@@ -37,6 +39,8 @@ export interface ViewCtx {
   showUsage: boolean;
   /** An approval is open: the tool call that is running is waiting on it. */
   awaitingApproval: boolean;
+  /** How each command pane is shown, by item id; absent is the default. */
+  shell: ReadonlyMap<string, { view: "raw" | "pseudo"; color: boolean }>;
   /** Per-node fold state the user set, by item id. */
   fold: ReadonlyMap<string, boolean>;
   /** Bumped when `fold`, `expandAll`, `hideThinking` or `showImages` change. */

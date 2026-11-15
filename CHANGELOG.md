@@ -64,8 +64,13 @@ native components the way omp's surface is.
   out of step with what Tern holds.
 - Vim keys in the composer (Settings › Display): Normal, Insert, Visual and
   Visual-line modes, counts, motions, the `d` `c` `y` operators, `iw`/`aw`.
-- `/rewind`: the transcript stays in view with the chosen message marked and
-  what follows it dimmed; Enter forks from there.
+- `/rewind`: a page replaying the transcript with the chosen message marked
+  and what follows it dimmed; Enter forks from there.
+- The bash tool's command is drawn in Tern's command pane: the script as
+  commands, flags, strings and operators, a script handed to an interpreter
+  shown as that language, and how long it ran.
+- `$EDITOR` and `/login` hand the whole pane over and take it back with the
+  transcript intact.
 - A `!` draft shows a bash chip in place of its sigil and highlights as bash.
 - Editor keys follow `keybindings.json` too (`tui.editor.*`, `tui.input.*`).
 - In a Tern pane the surface opens and draws before Tern's `hello` reply

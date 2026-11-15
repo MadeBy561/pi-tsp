@@ -46,6 +46,9 @@ const STYLESHEET = `
 [data-role="pi.widget"] { opacity: 0.85; }
 `;
 
+/** The surface: inline like a program's output, and styled by Tern as an agent session. */
+const SURFACE = { id: "pi", mode: "inline", title: "pi", role: "omp.session", font: "sans" } as const;
+
 const META_AS_CTRL = process.env.PI_TSP_META_AS_CTRL === "1";
 
 interface ModelInfo {
@@ -161,6 +164,7 @@ export class App {
   #visible = true;
   // Display state.
   #fold = new Map<string, boolean>();
+  #shellPrefs = new Map<string, { view: "raw" | "pseudo"; color: boolean }>();
   #foldRev = 0;
   #expandAll = false;
   #hideThinking = false;
@@ -170,6 +174,7 @@ export class App {
   #vim = new Vim(this.editor);
   /** A rewind point is being chosen: the user messages that can be forked from, and which one. */
   #rewind: RewindState | null = null;
+  #rewindPage: Surface | null = null;
   /** The pinned error: which error row it shows, and whether it is opened or dismissed. */
   #banner = { id: "", expanded: false, dismissed: false };
   // Focus owners, innermost first: sheet, prefs, picker, field, approval, composer.
@@ -204,7 +209,7 @@ export class App {
     this.#cwd = options.cwd;
     this.#files = new FileIndex(options.cwd);
     installSplice();
-    this.#surface = this.#session.open({ id: "pi", mode: "inline", title: "pi", role: "omp.session", font: "sans" });
+    this.#surface = this.#session.open(SURFACE);
     if (this.#session.caps.features.includes("styles")) this.#surface.stylesheet("pi-tsp", STYLESHEET);
     this.#loadHistory();
     this.#loadDisplay();
@@ -360,6 +365,7 @@ export class App {
     if (this.#renderTimer) clearTimeout(this.#renderTimer);
     this.#saveHistory();
     for (const approval of this.#approvals) clearTimeout(approval.timer);
+    if (this.#rewindPage) await this.#rewindPage.close({ keep: false });
     await Promise.race([this.#rpc.stop(), new Promise(done => setTimeout(done, 2500))]);
     await this.#session.close();
   }
@@ -576,6 +582,7 @@ export class App {
       showUsage: this.#showUsage,
       awaitingApproval: this.#approvals.length > 0,
       fold: this.#fold,
+      shell: this.#shellPrefs,
       foldRev: this.#foldRev,
       blob: this.#blob,
       on: {
@@ -594,6 +601,15 @@ export class App {
         pickModel: () => this.#pickModel(),
         openAgent: item => this.#openAgent(item),
         open: () => undefined,
+        shell: (id, value) => {
+          const prefs = { ...(this.#shellPrefs.get(id) ?? { view: "pseudo" as const, color: true }) };
+          if (value === "view:raw" || value === "view:pseudo") prefs.view = value.slice(5) as "raw" | "pseudo";
+          else if (value === "layer:color") prefs.color = !prefs.color;
+          else return;
+          this.#shellPrefs.set(id, prefs);
+          this.#foldRev += 1;
+          this.schedule();
+        },
       },
     };
   }
@@ -676,15 +692,6 @@ export class App {
     const built = this.#transcript.build(conv, ctx);
     const blocks = new Set(built.map(node => String(node.props["key"])));
     const rewind = this.#rewind;
-    if (rewind) {
-      // The chosen message is marked; everything after it is what the rewind leaves behind.
-      const order = new Map(conv.items.map((item, index) => [item.id, index]));
-      const pick = order.get(rewind.entries[rewind.at]!.item.id) ?? 0;
-      built.forEach((node, index) => {
-        const at = order.get(String(node.props["key"])) ?? -1;
-        if (at >= pick) built[index] = new TernNode(node.kind, { ...node.props, mark: at === pick ? "pick" : "drop" }, node.children, node.handlers, node.slots);
-      });
-    }
     const main: Node[] = [
       this.#mainHead.top,
       this.#welcome(),
@@ -720,18 +727,8 @@ export class App {
           })
         : null;
     const field = this.#field;
-    const rewindNode = rewind
-      ? rewindPanel(
-          {
-            text: firstLine(rewind.entries[rewind.at]!.item.text, 200),
-            dropped: built.filter(node => node.props["mark"] === "drop").length,
-            index: rewind.at + 1,
-            total: rewind.entries.length,
-          },
-          { confirm: () => void this.#confirmRewind(), cancel: () => ((this.#rewind = null), this.schedule()) },
-        )
-      : null;
-    const instead = rewindNode ?? (field
+    if (rewind) this.#renderRewind(rewind, built);
+    const instead = (field
       ? fieldDialog(
           { title: field.title, detail: field.detail, placeholder: field.placeholder, multiline: field.multiline, editor: field.editor, ...(field.deadline ? { remaining: field.deadline - Date.now() } : {}) },
           {
@@ -912,10 +909,7 @@ export class App {
       return;
     }
     if (this.#picker) return this.#closePicker();
-    if (this.#rewind) {
-      this.#rewind = null;
-      return;
-    }
+    if (this.#rewind) return this.#closeRewind();
     if (this.#field) return this.#closeField(null);
     if (this.#approvals[0]) return this.#answerApproval(this.#approvals[0], this.#approvals[0].choices.find(choice => choice.deny)?.id ?? null);
     if (now - this.#lastCtrlC < 1500) return this.quit();
@@ -1491,13 +1485,19 @@ export class App {
   }
 
   /**
-   * Hands the pane to another program and takes it back when it exits: the
-   * surface is suspended, the tty is cooked for the child, and the surface
-   * resumes with the caret put back.
+   * Hands the pane to another program and takes it back when it exits.
+   *
+   * The surface is closed with its transcript kept, so Tern gives the pane
+   * back to the grid, and this process stops reading the tty so the child has
+   * it alone. Afterwards the surface is adopted again: the transcript is
+   * still there, and the dock is drawn anew.
    */
   async #external(bin: string, args: string[], env: Record<string, string> = {}, note = ""): Promise<void> {
-    this.#surface.suspend();
+    const adopt = this.#session.caps.features.includes("adopt");
+    if (adopt) await this.#surface.close({ keep: true });
+    else this.#surface.suspend();
     process.stdin.setRawMode?.(false);
+    process.stdin.pause();
     if (note) process.stdout.write(`${note}\n`);
     try {
       await new Promise<void>((done, fail) => {
@@ -1507,7 +1507,11 @@ export class App {
       });
     } finally {
       process.stdin.setRawMode?.(true);
-      this.#surface.resume();
+      process.stdin.resume();
+      // The child may have switched bracketed paste off on its way out.
+      process.stdout.write("\x1b[?2004h");
+      if (adopt) this.#surface = this.#session.open({ ...SURFACE, adopt: true });
+      else this.#surface.resume();
       this.#focus = undefined;
       this.schedule();
     }
@@ -1962,18 +1966,49 @@ export class App {
     }
   }
 
+  /**
+   * The rewind page: a screen of its own replaying the transcript, the chosen
+   * message marked and everything after it dimmed, over the panel that
+   * confirms. The session's own surface stays as it is underneath.
+   */
+  #renderRewind(rewind: RewindState, built: readonly Node[]): void {
+    const page = (this.#rewindPage ??= this.#session.open({ id: "pi-rewind", mode: "screen", title: "Rewind", role: "omp.session", font: "sans" }));
+    const order = new Map(this.conv.items.map((item, index) => [item.id, index]));
+    const pick = order.get(rewind.entries[rewind.at]!.item.id) ?? 0;
+    let dropped = 0;
+    const blocks = built.map(node => {
+      const at = order.get(String(node.props["key"])) ?? -1;
+      if (at < pick) return node;
+      if (at > pick) dropped += 1;
+      return new TernNode(node.kind, { ...node.props, mark: at === pick ? "pick" : "drop" }, node.children, node.handlers, node.slots);
+    });
+    const panel = rewindPanel(
+      { text: firstLine(rewind.entries[rewind.at]!.item.text, 200), dropped, index: rewind.at + 1, total: rewind.entries.length },
+      { confirm: () => void this.#confirmRewind(), cancel: () => this.#closeRewind() },
+    );
+    page.render({ main: h("col", { key: "main" }, blocks), dock: h("col", { key: "dock" }, [panel]) });
+  }
+
+  #closeRewind(): void {
+    this.#rewind = null;
+    const page = this.#rewindPage;
+    this.#rewindPage = null;
+    void page?.close({ keep: false });
+    this.#focus = undefined;
+    this.schedule();
+  }
+
   #revealRewind(): void {
     const rewind = this.#rewind;
     if (!rewind) return;
     this.render();
-    this.#surface.reveal(`main.${rewind.entries[rewind.at]!.item.id}`, "nearest");
+    this.#rewindPage?.reveal(`main.${rewind.entries[rewind.at]!.item.id}`, "nearest");
   }
 
   #rewindKey(rewind: RewindState, key: Key): Promise<void> | void {
     switch (key.name) {
       case "escape":
-        this.#rewind = null;
-        return;
+        return this.#closeRewind();
       case "enter":
         return this.#confirmRewind();
       case "up":
@@ -1997,7 +2032,7 @@ export class App {
 
   async #confirmRewind(): Promise<void> {
     const entry = this.#rewind?.entries[this.#rewind.at];
-    this.#rewind = null;
+    this.#closeRewind();
     if (!entry) return;
     try {
       await this.#fork(entry.entryId);
