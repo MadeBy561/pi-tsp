@@ -9,7 +9,8 @@ possible.
 ```sh
 git clone https://github.com/MadeBy561/pi-tsp.git
 cd pi-tsp
-npm test
+npm install
+npm test        # builds, then runs the suite
 npm link
 pi-tsp
 ```
@@ -57,9 +58,17 @@ Do not edit a released tag. Cut a new version instead.
 
 ## Scope
 
-- Keep `src/launcher.mjs` responsible for the TSP probe and stock-pi fallback.
-- Keep `src/state.mjs` free of Tern-specific code.
-- Keep `src/view.mjs` pure: conversation plus UI state in, TSP nodes out.
+- `src/launcher.ts` decides between a surface and stock pi; nothing else does.
+- `src/model.ts` knows pi's events and nothing about Tern.
+- `src/view/*.ts` are pure: conversation plus UI state in, nodes out. They build
+  with the Tern SDK's `node()`; the SDK owns ids, diffing, framing and flow control.
+- `src/app.ts` owns focus, keys, commands and the RPC session.
+- A change to what is drawn needs a test in `test/view.test.mjs` asserting the
+  nodes or ops, and a look in Tern.
+- To script a session, run `tern serve --control SOCK` and drive it with
+  `tern ctl --control SOCK` (`run`, `type`, `key`, `shot`). Scripted sessions
+  send Ctrl as Meta; start pi-tsp with `PI_TSP_META_AS_CTRL=1` to reach the
+  Ctrl shortcuts, and `PI_TSP_RECORD=file.jsonl` to keep every message.
 - Do not add runtime dependencies unless there is a strong reason; the current
   adapter intentionally has none.
 - Never commit credentials, model keys, session files or personal paths.

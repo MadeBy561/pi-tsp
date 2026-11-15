@@ -14,12 +14,22 @@ import { extname, join } from "node:path";
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 
-function resultBuffer(result) {
+import type { SpawnSyncReturns } from "node:child_process";
+
+/** An image as pi's RPC takes it. */
+export interface ImageAttachment {
+  type: "image";
+  data: string;
+  mimeType: string;
+  name: string;
+}
+
+function resultBuffer(result: SpawnSyncReturns<Buffer>): Buffer | null {
   if (!result || result.error || result.status !== 0) return null;
   return Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout || "");
 }
 
-function run(bin, args, timeout = 1600) {
+function run(bin: string, args: string[], timeout = 1600): Buffer | null {
   return resultBuffer(spawnSync(bin, args, {
     encoding: "buffer",
     timeout,
@@ -27,7 +37,7 @@ function run(bin, args, timeout = 1600) {
   }));
 }
 
-function runText(bin, args, timeout = 1600) {
+function runText(bin: string, args: string[], timeout = 1600): string {
   const result = spawnSync(bin, args, {
     encoding: "utf8",
     timeout,
@@ -37,7 +47,7 @@ function runText(bin, args, timeout = 1600) {
   return String(result.stdout || "");
 }
 
-export function mimeForImage(buffer) {
+export function mimeForImage(buffer: Buffer | null | undefined): string {
   if (!buffer || buffer.length < 12) return "";
   if (buffer[0] === 0x89 && buffer.toString("ascii", 1, 4) === "PNG") return "image/png";
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
@@ -46,7 +56,7 @@ export function mimeForImage(buffer) {
   return "";
 }
 
-export function isImagePath(value) {
+export function isImagePath(value: unknown): boolean {
   if (!value) return false;
   let path = String(value).trim();
   if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
@@ -59,7 +69,7 @@ export function isImagePath(value) {
   try { return existsSync(path); } catch { return false; }
 }
 
-export function readImageFile(path) {
+export function readImageFile(path: unknown): ImageAttachment | null {
   const full = String(path || "").trim().replace(/^file:\/\//, "");
   if (!full || !IMAGE_EXTENSIONS.has(extname(full).toLowerCase())) return null;
   try {
@@ -78,18 +88,19 @@ export function readImageFile(path) {
   }
 }
 
-function imageFromBuffer(buffer) {
+function imageFromBuffer(buffer: Buffer | null): ImageAttachment | null {
+  if (!buffer) return null;
   const mimeType = mimeForImage(buffer);
   if (!mimeType || !buffer.length || buffer.length > MAX_IMAGE_BYTES) return null;
   return {
     type: "image",
     data: buffer.toString("base64"),
     mimeType,
-    name: `clipboard.${mimeType.split("/")[1].replace("jpeg", "jpg")}`,
+    name: `clipboard.${(mimeType.split("/")[1] ?? "png").replace("jpeg", "jpg")}`,
   };
 }
 
-function readMacImage() {
+function readMacImage(): ImageAttachment | null {
   const stem = join(tmpdir(), `pi-tsp-clipboard-${process.pid}-${Date.now()}`);
   const pngPath = `${stem}.png`;
   const tiffPath = `${stem}.tiff`;
@@ -133,7 +144,7 @@ function readMacImage() {
   }
 }
 
-function readMacFilePaths() {
+function readMacFilePaths(): string[] {
   if (process.platform !== "darwin") return [];
   const script = [
     "on run",
@@ -162,7 +173,7 @@ function readMacFilePaths() {
     .filter(Boolean);
 }
 
-function readWindowsImage() {
+function readWindowsImage(): ImageAttachment | null {
   const script = [
     "Add-Type -AssemblyName System.Windows.Forms",
     "Add-Type -AssemblyName System.Drawing",
@@ -177,7 +188,7 @@ function readWindowsImage() {
   try { return imageFromBuffer(Buffer.from(output, "base64")); } catch { return null; }
 }
 
-export function readClipboardImage() {
+export function readClipboardImage(): ImageAttachment | null {
   try {
     if (process.platform === "darwin") return readMacImage();
     if (process.platform === "win32") return readWindowsImage();
@@ -208,13 +219,13 @@ export function readClipboardImage() {
   return null;
 }
 
-export function readClipboardFilePaths() {
+export function readClipboardFilePaths(): string[] {
   return readMacFilePaths();
 }
 
-export function readClipboardText() {
+export function readClipboardText(): string {
   try {
-    if (process.platform === "darwin") return runText("pbpaste").replace(/\r?\n$/, "");
+    if (process.platform === "darwin") return runText("pbpaste", []).replace(/\r?\n$/, "");
     if (process.platform === "win32") return runText("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-Clipboard -Raw"]).replace(/\r?\n$/, "");
     const wayland = Boolean(process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === "wayland");
     if (wayland) {

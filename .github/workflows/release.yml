@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: 24
 
+      - run: npm ci
+
       - name: Test
         run: npm test
 

@@ -5,7 +5,7 @@
  * for the calls that can hurt: destructive shell commands, privilege
  * escalation, piping a download into a shell, and writes outside the
  * project. The question goes through ctx.ui.select, which RPC mode forwards
- * to pi-tsp as an extension_ui_request, so the terminal's own approval sheet
+ * to pi-tsp as an extension_ui_request, so the surface's approval panel
  * answers it.
  *
  * `/permissions` toggles the gate for the session.
@@ -14,23 +14,23 @@
 type Ctx = any;
 type Pi = any;
 
-const DANGEROUS = [
-  /\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)+/,
-  /\bsudo\b/,
-  /\b(mkfs|fdisk|parted)\b/,
-  /\bdd\s+.*\bof=\/dev\//,
-  /\bshutdown\b|\breboot\b|\bpoweroff\b/,
-  /\bkill\s+-9\b/,
-  /\bchmod\s+-R\s+777\b/,
-  /\bgit\s+push\s+.*(--force|-f)\b/,
-  /\b(curl|wget)\b[^|]*\|\s*(sh|bash|zsh)\b/,
-  />\s*\/dev\/sd[a-z]/,
-  /\bgit\s+reset\s+--hard\b/,
+const DANGEROUS: [RegExp, string][] = [
+  [/\brm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)+/, "deletes files recursively or by force"],
+  [/\bsudo\b/, "runs as root"],
+  [/\b(mkfs|fdisk|parted)\b/, "changes disk partitions or filesystems"],
+  [/\bdd\s+.*\bof=\/dev\//, "writes straight to a device"],
+  [/\bshutdown\b|\breboot\b|\bpoweroff\b/, "shuts the machine down"],
+  [/\bkill\s+-9\b/, "force-kills a process"],
+  [/\bchmod\s+-R\s+777\b/, "makes a tree world-writable"],
+  [/\bgit\s+push\s+.*(--force|-f)\b/, "force-pushes"],
+  [/\b(curl|wget)\b[^|]*\|\s*(sh|bash|zsh)\b/, "pipes a download into a shell"],
+  [/>\s*\/dev\/sd[a-z]/, "writes straight to a disk"],
+  [/\bgit\s+reset\s+--hard\b/, "discards uncommitted changes"],
 ];
 
 function shellDanger(command: string): string | null {
-  for (const pattern of DANGEROUS) {
-    if (pattern.test(command)) return `matches ${pattern}`;
+  for (const [pattern, why] of DANGEROUS) {
+    if (pattern.test(command)) return why;
   }
   return null;
 }
@@ -64,7 +64,10 @@ export default function permissionGate(pi: Pi) {
     }
     if (!reason) return;
     if (always.has(`${name}:${reason}`)) return;
-    const choice = await ctx.ui.select(`Allow ${name}?`, ["Allow once", "Always this session", "Deny"]);
+    // The first line is the question; the rest is what is asked about, which
+    // the surface shows as the request's details.
+    const subject = name === "bash" ? String(input.command || "") : String(input.path || input.file_path || "");
+    const choice = await ctx.ui.select(`Allow ${name}: ${reason}?\n${subject}`, ["Allow once", "Always this session", "Deny"]);
     if (!choice || choice === "Deny") {
       return { block: true, reason: `pi-tsp: denied by the user (${reason})` };
     }
