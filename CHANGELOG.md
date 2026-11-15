@@ -78,6 +78,10 @@ native components the way omp's surface is.
 - Compact tool calls (Settings › Display): each call one line, runs of them
   closed up.
 - A run that ends with todos still open leaves a reminder of them.
+- Background subagents still running show as a pill above the composer; a
+  click lists them.
+- `/context` counts what the model wrote exactly, from pi's own per-reply
+  figures, and marks the rest (what it was given) as an estimate.
 - A `!` draft shows a bash chip in place of its sigil and highlights as bash.
 - Editor keys follow `keybindings.json` too (`tui.editor.*`, `tui.input.*`).
 - In a Tern pane the surface opens and draws before Tern's `hello` reply

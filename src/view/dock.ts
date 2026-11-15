@@ -48,6 +48,7 @@ export interface DockActions {
   cycleEffort(): void;
   showContext(): void;
   showSession(): void;
+  showAgents(): void;
   dequeue(): void;
   detach(index: number): void;
   togglePlan(): void;
@@ -92,6 +93,21 @@ function todoHud(conv: Conversation): Node | null {
       items: phase.items.map(item => ({ id: `${phase.id}.${item.id}`, text: item.text, status: item.status, ...(item.note ? { note: item.note } : {}) })),
     })),
   });
+}
+
+/** The work still running behind the conversation: background subagents, as a pill that opens their list. */
+function runningPill(conv: Conversation, on: DockActions): Node | null {
+  const running = conv.items.filter(item => item.kind === "agent" && item.background && (item.agentStatus === "running" || item.agentStatus === "pending"));
+  if (!running.length) return null;
+  const first = running[0]!;
+  const started = Math.min(...running.map(item => item.startedAt ?? item.at));
+  return h("row", { key: "hud", role: "omp.hud", justify: "end" }, [
+    h("row", { key: "jobs", role: "omp.hud.jobs", gap: "xs", align: "center", title: "Background subagents: click to list them", onClick: () => on.showAgents() }, [
+      h("spinner", { key: "spin", style: "dots" }),
+      h("text", { key: "glance", role: "omp.hud.glance", wrap: "none", truncate: "end", spans: [s(running.length === 1 ? firstLine(first.args?.description ?? first.agentType ?? "subagent", 50) : `${running.length} subagents running`, "muted")] }),
+      h("elapsed", { key: "age", age: Math.max(0, Date.now() - started), format: "short" }),
+    ]),
+  ]);
 }
 
 function queueRows(conv: Conversation, on: DockActions): Node | null {
@@ -269,6 +285,7 @@ export function dock(conv: Conversation, state: DockState, on: DockActions, abov
   const hud = todoHud(conv);
   const busy = conv.busy || conv.compacting || Boolean(conv.retry);
   return h("col", { key: "dock" }, [
+    runningPill(conv, on),
     busy || hud
       ? h("row", { key: "activity", role: "omp.hud.activity", align: "center", gap: "sm" }, [
           busy ? h("col", { key: "status", role: "omp.hud.status" }, [workingRow(conv, state, on)]) : h("row", { key: "status", grow: 1 }),

@@ -212,7 +212,16 @@ and frame ops (ids unique, an unchanged view diffs to nothing, a streamed
 delta is one `text append`), the block reconciler against a document model,
 and the whole surface end to end between a fake terminal and a fake pi.
 
-`node test/bench.mjs` prints what a frame costs as the transcript grows.
+`node test/bench.mjs` prints what each interactive path costs. On the
+machine this was written on:
+
+| Path | Cost |
+|---|---|
+| A streamed word, 2,500 transcript rows | 0.5 ms |
+| A streamed word, 10,000 transcript rows | 2.3 ms |
+| A keystroke in a picker of 2,000 items | 1.8 ms |
+| A keystroke in the composer | 0.02 ms |
+| `@` completion over 20,000 files | 6.7 ms |
 
 To check a change in Tern, record what pi-tsp sends and receives:
 
@@ -231,7 +240,9 @@ PI_TSP_RECORD=/tmp/pi-tsp.jsonl pi-tsp
   run step by step, from a trace only its own shell produces.
 - Signing in is pi's own flow: `/login` hands the pane to pi for it and takes
   it back when pi exits. pi's RPC mode has no login to draw natively.
-- The split in `/context` is an estimate; pi reports only the total.
+- In `/context` the total and what the model wrote are pi's own counts. How
+  the rest divides between your messages, tool results and the system prompt
+  is an estimate, because pi does not break it down.
 - Subagent rows need `pi-subagents` or `@tintinweb/pi-subagents`; pi has no
   subagents of its own.
 - pi does not say which tool call an approval is for; pi-tsp marks the call

@@ -18,7 +18,7 @@ const ctx = (extra = {}) => ({
   on: { toggle: noop, copy: noop, rewind: noop, editTurn: noop, retry: noop, pickModel: noop, openAgent: noop, open: noop, shell: noop },
   ...extra,
 });
-const dockOn = { submit: noop, interrupt: noop, pickModel: noop, cycleEffort: noop, showContext: noop, showSession: noop, dequeue: noop, detach: noop, togglePlan: noop, edit: noop, undo: noop, send: noop };
+const dockOn = { submit: noop, interrupt: noop, pickModel: noop, cycleEffort: noop, showContext: noop, showSession: noop, showAgents: noop, dequeue: noop, detach: noop, togglePlan: noop, edit: noop, undo: noop, send: noop };
 const dockState = (extra = {}) => ({ editor: new TextEditor(), attachments: [], vimMode: "", drawn: null, modelName: "m", modelIcon: undefined, effort: "high", reasoning: true, statuses: new Map(), widgets: new Map(), blocked: false, starting: false, activity: "", blob: () => undefined, ...extra });
 
 const session = [
@@ -356,4 +356,19 @@ test("a run that ends with todos open leaves a reminder of them", () => {
   const reminder = View.from({ main: h("col", { key: "main" }, new TranscriptView().build(conv, ctx())) }).regions[0].children.at(-1);
   assert.deepEqual([reminder.kind, reminder.props.role, reminder.props.mode], ["checklist", "omp.notice.todo", "reminder"]);
   assert.deepEqual(reminder.props.phases[0].items.map(item => item.text), ["ship it"]);
+});
+
+test("background subagents still running show as a pill above the composer", () => {
+  const conv = new Conversation();
+  const nodes = () => index(View.from({ dock: dock(conv, dockState(), dockOn) }));
+  assert.equal(nodes().has("dock.hud"), false);
+  conv.onEvent({ type: "message_start", message: { role: "assistant" } });
+  conv.onEvent({ type: "message_update", assistantMessageEvent: { type: "toolcall_end", contentIndex: 0, toolCall: { id: "a1", name: "Agent", arguments: { description: "long job", run_in_background: true } } } });
+  conv.onEvent({ type: "tool_execution_end", toolCallId: "a1", result: { content: [], details: { status: "background", agentId: "a-1" } } });
+  const pill = nodes().get("dock.hud.jobs");
+  assert.equal(pill.props.role, "omp.hud.jobs");
+  assert.deepEqual(pill.children.map(child => child.kind), ["spinner", "text", "elapsed"]);
+  assert.equal(pill.children[1].props.spans[0].t, "long job");
+  conv.onEvent({ type: "message_end", message: { role: "custom", customType: "subagent-notification", content: "done", details: { id: "a-1", status: "completed" } } });
+  assert.equal(nodes().has("dock.hud"), false);
 });

@@ -663,6 +663,7 @@ export class App {
       cycleEffort: () => void this.#cycleEffort(),
       showContext: () => this.#showContext(),
       showSession: () => this.#showSession(),
+      showAgents: () => this.#pickAgents(),
       dequeue: () => void this.#dequeue(),
       detach: index => {
         this.#attachments.splice(index, 1);
@@ -2342,9 +2343,11 @@ export class App {
   }
 
   /**
-   * What fills the context window. pi reports only the total, so the split
-   * by kind is each kind's share of the transcript's text applied to that
-   * total: an estimate, and labelled as one.
+   * What fills the context window. pi reports the total and, per reply, the
+   * tokens the model wrote, so those two are exact. What the model was given
+   * (your messages, tool results, summaries, and the system prompt with its
+   * tool schemas) is not broken down by pi: that part is split by each
+   * kind's share of the transcript's text, and marked as an estimate.
    */
   #showContext(): void {
     const conv = this.conv;
@@ -2353,23 +2356,25 @@ export class App {
       this.toast("The context size is unknown until the model answers", "warning");
       return;
     }
-    const kinds: [string, string, (item: Item) => number][] = [
-      ["You", "accent", item => (item.kind === "user" ? item.text.length + (item.images?.length ?? 0) * 4000 : 0)],
-      ["Replies", "success", item => (item.kind === "assistant" ? item.text.length : 0)],
-      ["Thinking", "thinkingText", item => (item.kind === "thinking" ? item.text.length : 0)],
-      ["Tool calls", "info", item => (item.kind === "tool" || item.kind === "agent" ? JSON.stringify(item.args ?? {}).length : 0)],
-      ["Tool results", "warning", item => (item.kind === "tool" || item.kind === "agent" || item.kind === "bash" || item.kind === "python" ? (item.output?.length ?? 0) : 0)],
-      ["Summaries", "muted", item => (item.kind === "compaction" || item.kind === "branch" || item.kind === "custom" || item.kind === "hook" ? item.text.length : 0)],
-    ];
-    const sizes = kinds.map(([, , size]) => conv.items.reduce((sum, item) => sum + size(item), 0));
-    const text = sizes.reduce((sum, size) => sum + size, 0);
     const used = Math.max(0, conv.contextTokens);
-    // What the transcript does not account for is the system prompt and tool schemas.
-    const transcript = Math.min(used, Math.round(text / 4));
-    const fixed = used - transcript;
+    // Only what follows the last compaction is still in the window as itself.
+    const since = conv.items.findLastIndex(item => item.kind === "compaction");
+    const live = conv.items.slice(Math.max(0, since));
+    const written = Math.min(used, live.reduce((sum, item) => sum + (item.usage?.output ?? 0), 0));
+    const given: [string, string, (item: Item) => number][] = [
+      ["Your messages", "accent", item => (item.kind === "user" ? item.text.length + (item.images?.length ?? 0) * 4000 : 0)],
+      ["Tool results", "warning", item => (item.kind === "tool" || item.kind === "agent" || ((item.kind === "bash" || item.kind === "python") && !item.excluded) ? (item.output?.length ?? 0) : 0)],
+      ["Summaries and notes", "muted", item => (item.kind === "compaction" || item.kind === "branch" || item.kind === "custom" || item.kind === "hook" ? item.text.length : 0)],
+    ];
+    const sizes = given.map(([, , size]) => live.reduce((sum, item) => sum + size(item), 0));
+    const text = sizes.reduce((sum, size) => sum + size, 0);
+    const rest = used - written;
+    // About four characters to a token; what the transcript cannot account for is the system prompt and tool schemas.
+    const transcript = Math.min(rest, Math.round(text / 4));
     const rows = [
-      { label: "System prompt and tools", token: "dim", value: fixed },
-      ...kinds.map(([label, token], index) => ({ label, token, value: text ? Math.round((sizes[index]! / text) * transcript) : 0 })),
+      { label: "Written by the model", token: "success", value: written, exact: true },
+      ...given.map(([label, token], index) => ({ label, token, value: text ? Math.round((sizes[index]! / text) * transcript) : 0, exact: false })),
+      { label: "System prompt and tools", token: "dim", value: rest - transcript, exact: false },
     ].filter(row => row.value > 0);
     this.#sheet = {
       id: "context",
@@ -2381,7 +2386,7 @@ export class App {
           style: "bar",
           size: "lg",
           value: Math.min(1, used / window),
-          parts: rows.map(row => ({ value: row.value / window, token: row.token, label: row.label })),
+          parts: rows.map(row => ({ value: row.value / window, token: row.token, label: row.label, ...(row.exact ? {} : { hatch: true }) })),
           label: `${Math.round((used / window) * 100)}%`,
           total: tokens(window),
           thresholds: { warn: 0.7, bad: 0.9 },
@@ -2389,11 +2394,15 @@ export class App {
         h("kv", {
           key: "rows",
           items: [
-            ...rows.map(row => ({ k: [s(row.label, row.token)], v: [s(`~${tokens(row.value)}`, "mono"), s(`  ${((row.value / window) * 100).toFixed(1)}%`, "dim mono")] })),
+            ...rows.map(row => ({ k: [s(row.label, row.token)], v: [s(`${row.exact ? "" : "~"}${tokens(row.value)}`, "mono"), s(`  ${((row.value / window) * 100).toFixed(1)}%`, "dim mono")] })),
             { k: [s("Free", "muted")], v: [s(tokens(Math.max(0, window - used)), "mono")] },
           ],
         }),
-        h("text", { key: "note", wrap: "word", spans: [s(`${tokens(used)} of ${tokens(window)} tokens used, as pi reports it. The split is estimated from the transcript's text.${conv.autoCompaction ? " Auto-compact is on." : ""}`, "muted")] }),
+        h("text", {
+          key: "note",
+          wrap: "word",
+          spans: [s(`${tokens(used)} of ${tokens(window)} tokens used. The total and what the model wrote are pi's own counts; rows marked ~ are estimated from the transcript's text.${conv.autoCompaction ? " Auto-compact is on." : ""}`, "muted")],
+        }),
       ],
       extra: () => [h("button", { key: "compact", text: "Compact now", size: "md", onClick: () => (this.#closeSheet(), void this.#compact("")) })],
     };

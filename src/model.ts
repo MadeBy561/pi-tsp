@@ -274,6 +274,9 @@ function tokenCount(value: unknown): number | undefined {
   return Math.round(Number(match[1]) * scale);
 }
 
+/** How much of a running `!command`'s output is kept, in characters. */
+const SHELL_OUTPUT_CAP = 2_000_000;
+
 interface PendingAssistant {
   seq: number;
   startedAt: number;
@@ -571,7 +574,8 @@ export class Conversation {
       case "bash_execution_update": {
         const shell = this.shell;
         if (!shell) break;
-        if (typeof event.delta === "string") shell.output = (shell.output || "") + event.delta;
+        // A command can print without end; keep the last of it, as the view shows the tail anyway.
+        if (typeof event.delta === "string") shell.output = ((shell.output || "") + event.delta).slice(-SHELL_OUTPUT_CAP);
         this.bump(shell);
         break;
       }
