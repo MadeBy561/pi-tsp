@@ -283,6 +283,24 @@ function editView(item: Item, ctx: ViewCtx): ToolView {
   };
 }
 
+/**
+ * Fence language per extension of a written file that Tern draws as a figure
+ * when it meets that fence in a reply: svg and mermaid, and the 3D formats.
+ */
+const FIGURE_FENCES: Readonly<Record<string, string>> = { svg: "svg", mmd: "mermaid", mermaid: "mermaid", obj: "obj", ply: "ply", wrl: "wrl", vrml: "vrml", x3dv: "x3dv", stl: "stl", gltf: "gltf", usda: "usda", usd: "usd" };
+
+/** The fence a written file draws as, when its extension names a figure language and it has content. */
+export function writeFigure(path: string, content: string): string | null {
+  const lang = FIGURE_FENCES[(path.match(/\.([A-Za-z0-9]+)$/)?.[1] ?? "").toLowerCase()];
+  return lang && /\S/.test(content) ? lang : null;
+}
+
+/** `source` in a fence long enough that a run of backticks inside it cannot close it. */
+function fenced(lang: string, source: string, open: boolean): string {
+  const ticks = "`".repeat(Math.max(3, ...(source.match(/`+/g) ?? []).map(run => run.length + 1)));
+  return `${ticks}${lang}\n${source.replace(/\n$/, "")}${open ? "" : `\n${ticks}`}`;
+}
+
 function writeView(item: Item, ctx: ViewCtx): ToolView {
   const args = item.args || {};
   const path = pathOf(args);
@@ -290,6 +308,9 @@ function writeView(item: Item, ctx: ViewCtx): ToolView {
   const failed = item.status === "error";
   const live = item.status === "pending" || item.status === "running";
   const lines = content ? content.replace(/\n$/, "").split("\n").length : 0;
+  // A figure file is drawn as its fence draws in a reply, above its source. A mermaid figure waits for the whole file: Tern shows an open one as code.
+  const lang = failed ? null : writeFigure(path, content);
+  const figure = lang && !(lang === "mermaid" && live) ? [h("md", { key: "figure", role: "omp.tool.write.figure", text: fenced(lang, content, live), ...(live ? { stream: true } : {}) })] : [];
   return {
     props: {
       title: "Write",
@@ -300,10 +321,10 @@ function writeView(item: Item, ctx: ViewCtx): ToolView {
       frame: "card",
       collapsible: true,
       collapsed: live ? false : collapsed(ctx, item.id, true),
-      preview: { lines: 8 },
+      preview: { lines: figure.length ? 26 : 8 },
       ...(failed ? { tone: "error" } : {}),
     },
-    body: failed ? [errorText(item)] : content ? [h("code", { key: "source", path: path || undefined, numbers: true, wrap: true, text: head(content) })] : [],
+    body: failed ? [errorText(item)] : content ? [...figure, h("code", { key: "source", path: path || undefined, numbers: true, wrap: true, text: head(content) })] : [],
   };
 }
 

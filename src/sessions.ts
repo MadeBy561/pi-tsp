@@ -89,12 +89,22 @@ function readHead(path: string): Head | null {
       const text = typeof content === "string"
         ? content
         : (Array.isArray(content) ? content : []).filter((block: any) => block?.type === "text").map((block: any) => block.text).join(" ");
+      // A preview is one flowing line: heading marks, table rules and fences would only be noise in it.
+      const plain = String(text || "")
+        .replace(/^```.*$/gm, "")
+        .replace(/^\s*\|?[\s:|-]*-{3,}[\s:|-]*\|?\s*$/gm, "")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/^[ \t]*\|[ \t]*|[ \t]*\|[ \t]*$/gm, "")
+        .replace(/[ \t]*\|[ \t]*/g, " · ")
+        .replace(/\*\*|__|`/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
       if (role === "user" && !title) {
-        title = String(text || "").replace(/\s+/g, " ").slice(0, 90);
+        title = plain.slice(0, 90);
       }
-      if ((role === "user" || role === "assistant") && text) {
-        preview = String(text).replace(/\s+/g, " ").trim().slice(0, 240);
-        recent.push({ role, text: String(text).replace(/\s+/g, " ").trim().slice(0, 500) });
+      if ((role === "user" || role === "assistant") && plain) {
+        preview = plain.slice(0, 240);
+        recent.push({ role, text: plain.slice(0, 500) });
         if (recent.length > 8) recent.shift();
       }
       if (record.timestamp) last = record.timestamp;

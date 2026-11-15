@@ -311,7 +311,7 @@ test("a table of numbers in a reply is followed by a bar chart, once it has arri
   const { chartTables, withCharts } = await import("../dist/chart.js");
   const text = "Timings:\n\n| Step | Time |\n|---|---|\n| build | 120 ms |\n| test | 1,450 ms |\n| lint | 80 ms |\n\nDone.";
   const [table] = chartTables(text, false);
-  assert.deepEqual([table.title, table.unit, table.rows], ["Time by Step", "ms", [{ label: "build", value: 120 }, { label: "test", value: 1450 }, { label: "lint", value: 80 }]]);
+  assert.deepEqual([table.title, table.unit, table.rows], ["Time by Step", "ms", [{ label: "build", value: 120, text: "120 ms" }, { label: "test", value: 1450, text: "1,450 ms" }, { label: "lint", value: 80, text: "80 ms" }]]);
   const parts = withCharts(text, false);
   assert.deepEqual(parts.map(part => part.chart), [false, true, false]);
   assert.match(parts[1].text, /^```svg\n<svg[^>]*aria-label="bar chart of Time by Step"/);
@@ -407,4 +407,31 @@ test("a sheet keeps its buttons in the overlay's footer, clear of a long body", 
   assert.match(wire, /"foot":"layer\.agent\.foot"/, "the overlay names its footer");
   assert.match(wire, /layer\.agent\.foot\.close/, "Close is a child of the footer");
   assert.doesNotMatch(wire, /layer\.agent\.actions/);
+});
+
+test("a written figure file is drawn as its fence, above its source", async () => {
+  const { writeFigure } = await import("../dist/view/tools.js");
+  assert.equal(writeFigure("/p/cube.obj", "v 0 0 0"), "obj");
+  assert.equal(writeFigure("logo.SVG", "<svg/>"), "svg");
+  assert.equal(writeFigure("flow.mmd", "graph TD; a-->b"), "mermaid");
+  assert.equal(writeFigure("notes.txt", "hi"), null);
+  assert.equal(writeFigure("empty.obj", "  \n"), null);
+  const conv = new Conversation();
+  conv.loadMessages([
+    { role: "assistant", content: [{ type: "toolCall", id: "w1", name: "write", arguments: { path: "/proj/cube.obj", content: "v 0 0 0\nv 1 0 0\n" } }] },
+    { role: "toolResult", toolCallId: "w1", toolName: "write", content: [{ type: "text", text: "ok" }], isError: false },
+  ]);
+  const nodes = [];
+  const walk = node => (nodes.push(node), (node.children ?? []).forEach(walk));
+  new TranscriptView().build(conv, ctx()).forEach(walk);
+  const figure = nodes.find(node => node.props?.role === "omp.tool.write.figure");
+  assert.ok(figure, "the figure node is there");
+  assert.equal(figure.props.text, "```obj\nv 0 0 0\nv 1 0 0\n```");
+  assert.ok(nodes.some(node => node.kind === "code" && node.props?.path === "/proj/cube.obj"), "the source stays below it");
+});
+
+test("a chart labels a bar with the cell as written", async () => {
+  const { chartTables, chartSvg } = await import("../dist/chart.js");
+  const [table] = chartTables("| Fruit | Price |\n|---|---|\n| Apple | $1.20 |\n| Pear | $0.50 |", false);
+  assert.ok(chartSvg(table).includes(">$1.20<"));
 });

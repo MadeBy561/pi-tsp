@@ -1,6 +1,6 @@
 {
   "name": "pi-tsp",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "type": "module",
   "description": "A native Tern surface for the pi coding agent: semantic transcript, tool cards, diffs, subagents, approvals, pickers and a real composer over pi's RPC session.",
   "bin": {

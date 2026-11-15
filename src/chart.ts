@@ -12,7 +12,8 @@ export interface ChartTable {
   end: number;
   title: string;
   unit: string;
-  rows: { label: string; value: number }[];
+  /** `text` is the cell as written, so "$1.20" is not redrawn as "$1.2". */
+  rows: { label: string; value: number; text?: string }[];
 }
 
 const DELIMITER_ROW = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/;
@@ -61,7 +62,7 @@ export function chartTables(source: string, streaming: boolean): ChartTable[] {
         end: Math.min(source.length, starts[last]! + lines[last]!.length + 1),
         title: `${head[column]} by ${head[0]}`.replace(/[*_`]/g, ""),
         unit,
-        rows: body.map((row, at) => ({ label: (row[0] ?? "").replace(/[*_`]/g, ""), value: values[at]!.value })),
+        rows: body.map((row, at) => ({ label: (row[0] ?? "").replace(/[*_`]/g, ""), value: values[at]!.value, text: (row[column] ?? "").replace(/[*_`]/g, "").trim() })),
       });
       break;
     }
@@ -86,7 +87,7 @@ export function chartSvg(table: ChartTable): string {
     .map((row, index) => {
       const y = index * rowHeight + 4;
       const length = max > 0 ? Math.max(2, (row.value / max) * barWidth) : 2;
-      const value = table.unit === "$" ? `$${short(row.value)}` : `${short(row.value)}${table.unit ? (table.unit === "%" ? "%" : ` ${table.unit}`) : ""}`;
+      const value = row.text ? row.text : table.unit === "$" ? `$${short(row.value)}` : `${short(row.value)}${table.unit ? (table.unit === "%" ? "%" : ` ${table.unit}`) : ""}`;
       return [
         `<text x="${labelWidth}" y="${y + 14}" text-anchor="end" font-size="12" fill="var(--fg)">${escape(row.label.length > 30 ? `${row.label.slice(0, 29)}…` : row.label)}</text>`,
         `<rect x="${barLeft}" y="${y + 2}" width="${length.toFixed(1)}" height="16" rx="3" fill="var(--accent)" fill-opacity="0.8"/>`,

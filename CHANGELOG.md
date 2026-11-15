@@ -3,6 +3,30 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-11-15
+
+Brings pi-tsp level with claude-tsp, its sister surface for Claude Code.
+
+### Added
+
+- A written figure file is drawn as a figure above its source, as oh-my-pi
+  draws it: SVG and Mermaid files, and 3D models (`.obj`, `.ply`, `.stl`,
+  `.gltf`, `.wrl`, `.usd`…).
+- Settings dropdowns open on click and with Enter; arrows move, Enter picks,
+  and a click elsewhere closes the dropdown before the window.
+
+### Fixed
+
+- The surface's stylesheet was never applied (it was sent before Tern had
+  said it takes styles).
+- The transcript column takes the composer's width, so a reply starts where
+  the composer does instead of to its left; the error banner and text dialogs
+  follow it.
+- The rewind page keeps that column instead of running edge to edge.
+- The settings window opens at its top, with no row hidden under its header.
+- Session, outline and preview titles drop Markdown marks and table syntax.
+- A chart labels a bar with the value as written (`$1.20`, not `$1.2`).
+
 ## [2.0.2] - 2026-11-15
 
 ### Fixed

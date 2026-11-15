@@ -47,10 +47,17 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
 /** The surface's own styles: only what Tern's built-in roles do not cover. */
 const STYLESHEET = `
 [data-role="pi.widget"] { opacity: 0.85; }
+/* Tern's reading column is 880px wide and its composer 736px: a reply then starts left of the composer. The column takes the composer's width. */
+* { --rd-measure: 736px; }
+/* Panels of the dock (the error banner, a text dialog) take the composer's width, as the approval panel does. */
+[data-role="omp.errorBanner"], [data-role="omp.overlay.hook-input"], [data-role="omp.overlay.hook-editor"] { width: 100%; max-width: 736px; margin-left: auto; margin-right: auto; box-sizing: border-box; align-self: center; }
 `;
 
 /** The surface: inline like a program's output, and styled by Tern as an agent session. */
 const SURFACE = { id: "pi", mode: "inline", title: "pi", role: "omp.session", font: "sans" } as const;
+
+/** A message's first line as a row label: without the heading marks and emphasis it was written with. */
+const plainLabel = (text: string): string => text.replace(/^#{1,6}\s+/, "").replace(/[*_`]/g, "");
 
 const META_AS_CTRL = process.env.PI_TSP_META_AS_CTRL === "1";
 
@@ -110,6 +117,8 @@ interface Sheet {
 interface Prefs {
   page: string;
   focus: string | null;
+  /** The row whose menu is open, and the option under the cursor. */
+  editing?: { row: string; option: string } | null;
 }
 
 /** The user messages that can be forked from, and which one is chosen. */
@@ -228,6 +237,8 @@ export class App {
 
   /** Runs until the user quits or pi cannot be started. */
   async run(): Promise<number> {
+    // The terminal's features are known by now; at construction they may not have been.
+    if (this.#session.caps.features.includes("styles")) this.#surface.stylesheet("pi-tsp", STYLESHEET);
     this.render();
     this.#startRpc();
     for await (const input of this.#session) {
@@ -2078,7 +2089,7 @@ export class App {
    * confirms. The session's own surface stays as it is underneath.
    */
   #renderRewind(rewind: RewindState, built: readonly Node[]): void {
-    const page = (this.#rewindPage ??= this.#session.open({ id: "pi-rewind", mode: "screen", title: "Rewind", role: "omp.session", font: "sans" }));
+    const page = (this.#rewindPage ??= this.#session.open({ id: "pi-rewind", mode: "screen", title: "Rewind", role: "omp.rewind", font: "sans" }));
     const order = new Map(this.conv.items.map((item, index) => [item.id, index]));
     const pick = order.get(rewind.entries[rewind.at]!.item.id) ?? 0;
     let dropped = 0;
@@ -2252,7 +2263,7 @@ export class App {
     const byId = new Map(rows.map(item => [item.id, item]));
     this.#openPicker({
       props: { title: "Copy a message", icon: "copy", noun: "messages", size: "lg", layout: "timeline", preview: "side", placeholder: "Search messages…" },
-      items: rows.map(item => ({ id: item.id, label: firstLine(item.text, 110), node: item.kind === "user" ? ("user" as const) : ("assistant" as const), facts: { when: clock(item.at, this.#session.caps.hour12) }, search: item.text.slice(0, 2000) })),
+      items: rows.map(item => ({ id: item.id, label: plainLabel(firstLine(item.text, 110)), node: item.kind === "user" ? ("user" as const) : ("assistant" as const), facts: { when: clock(item.at, this.#session.caps.hour12) }, search: item.text.slice(0, 2000) })),
       selected: rows.at(-1)?.id ?? null,
       searchable: true,
       actions: [
@@ -2616,7 +2627,8 @@ export class App {
 
   #openPrefs(): void {
     this.#completion = null;
-    this.#prefs = { page: "session", focus: "model" };
+    // No row is focused until a key moves to one: Tern scrolls a focused row to the top of the page, under its sticky header.
+    this.#prefs = { page: "session", focus: null };
   }
 
   #prefsView(): Node {
@@ -2633,18 +2645,47 @@ export class App {
         lead: prefs.page === "session" ? "The model and how turns run. These apply to the open session." : "How the transcript is drawn in this pane.",
         sections: sections.map(({ id, title, rows }) => ({ id, title, rows })),
         focus: prefs.focus,
+        ...(prefs.editing ? { editing: prefs.editing } : {}),
       },
-      { change: (row, value) => void this.#prefsChange(row, value), select: item => ((prefs.focus = item), this.schedule()) },
+      {
+        change: (row, value) => {
+          prefs.editing = null;
+          void this.#prefsChange(row, value);
+        },
+        // A click on a row focuses it; in an open menu it arrives as `row=option` and moves the cursor there.
+        select: item => {
+          const at = item.indexOf("=");
+          if (prefs.editing && at > 0 && item.slice(0, at) === prefs.editing.row) prefs.editing = { row: prefs.editing.row, option: item.slice(at + 1) };
+          else {
+            prefs.focus = item;
+            if (prefs.editing && prefs.editing.row !== item) prefs.editing = null;
+          }
+          this.schedule();
+        },
+        // A click on a dropdown asks for its menu: Tern draws it while `editing` names the row.
+        activate: item => {
+          const row = this.#prefRows().flatMap(section => section.rows).find(entry => entry.id === item);
+          const control = row?.control as { k: string; value?: string; options?: { value: string }[]; act?: string } | undefined;
+          if (!row || !control) return;
+          prefs.focus = item;
+          if (control.k === "choice" && control.options?.length) prefs.editing = prefs.editing?.row === item ? null : { row: item, option: control.value ?? control.options[0]!.value };
+          else if (control.k === "action" && control.act) this.#prefsAction(control.act, undefined);
+          this.schedule();
+        },
+      },
     );
   }
 
   #prefsAction(act: string, value: string | undefined): void {
     const prefs = this.#prefs;
     if (!prefs) return;
-    if (act === "close" || act === "cancel") this.#prefs = null;
+    // With a dropdown open, a click elsewhere or Esc closes the dropdown first, not the whole window.
+    if ((act === "close" || act === "cancel") && prefs.editing) prefs.editing = null;
+    else if (act === "close" || act === "cancel") this.#prefs = null;
     else if (act === "page" && value) {
       prefs.page = value;
-      prefs.focus = this.#prefRows().find(section => section.page === value)?.rows[0]?.id ?? null;
+      prefs.focus = null;
+      prefs.editing = null;
     } else if (act === "pick-model") {
       this.#prefs = null;
       this.#pickModel();
@@ -2761,6 +2802,26 @@ export class App {
         if (next) void this.#prefsChange(row.id, next.value);
       } else if (control.k === "action" && control.act) this.#prefsAction(control.act, undefined);
     };
+    // An open menu owns the keys: arrows move in it, Enter picks, Esc closes it.
+    if (prefs.editing) {
+      const editing = prefs.editing;
+      const options = ((rows.find(entry => entry.id === editing.row)?.control as { options?: { value: string }[] } | undefined)?.options ?? []).map(option => option.value);
+      const index = options.indexOf(editing.option);
+      if (key.name === "escape") prefs.editing = null;
+      else if (key.name === "up") prefs.editing = { row: editing.row, option: options[Math.max(0, index - 1)] ?? editing.option };
+      else if (key.name === "down") prefs.editing = { row: editing.row, option: options[Math.min(options.length - 1, index + 1)] ?? editing.option };
+      else if (key.name === "enter" || key.name === "space") {
+        prefs.editing = null;
+        void this.#prefsChange(editing.row, editing.option);
+      }
+      return;
+    }
+    const menu = (): boolean => {
+      const control = row?.control as { k: string; value?: string; options?: { value: string }[]; style?: string } | undefined;
+      if (!row || control?.k !== "choice" || control.style === "segmented" || !control.options?.length) return false;
+      prefs.editing = { row: row.id, option: control.value ?? control.options[0]!.value };
+      return true;
+    };
     switch (key.name) {
       case "escape":
         this.#prefs = null;
@@ -2780,9 +2841,11 @@ export class App {
         step(-1);
         return;
       case "right":
+        step(1);
+        return;
       case "enter":
       case "space":
-        step(1);
+        if (!menu()) step(1);
         return;
       default:
         return;

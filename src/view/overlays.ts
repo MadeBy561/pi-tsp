@@ -324,10 +324,11 @@ export interface PrefsView {
   lead?: string;
   sections: { id: string; title: string; rows: PrefsRow[] }[];
   focus: string | null;
+  editing?: { row: string; option: string };
 }
 
 /** The settings window: pages of typed rows the terminal draws natively. */
-export function prefsNode(view: PrefsView, on: { change(row: string, value: unknown): void; select(item: string): void }): Node {
+export function prefsNode(view: PrefsView, on: { change(row: string, value: unknown): void; select(item: string): void; activate?(item: string): void }): Node {
   return h("prefs", {
     key: "prefs",
     title: view.title,
@@ -336,6 +337,8 @@ export function prefsNode(view: PrefsView, on: { change(row: string, value: unkn
     ...(view.lead ? { lead: view.lead } : {}),
     sections: view.sections,
     focus: view.focus,
+    ...(view.editing ? { editing: view.editing } : {}),
+    onActivate: (event: ActivateEvent) => on.activate?.(event.item),
     onChange: (event: ChangeEvent) => on.change(event.item ?? "", event.value),
     onSelect: (event: SelectEvent) => on.select(event.item),
   });
