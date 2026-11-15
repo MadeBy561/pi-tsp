@@ -3,6 +3,18 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-11-15
+
+### Fixed
+
+- A sheet's buttons (Close, Copy report, Compact now) sit in the overlay's
+  footer, so a long body such as a subagent transcript scrolls under them
+  instead of pushing Close off the window.
+
+### Changed
+
+- README screenshots retaken on a neutral demo setup; unused images removed.
+
 ## [2.0.0] - 2026-11-15
 
 A rewrite in TypeScript on Tern's SDK (`@stencil-hq/tern`), drawn with Tern's

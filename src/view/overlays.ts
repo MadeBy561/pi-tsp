@@ -302,10 +302,9 @@ export function toastNodes(toasts: readonly Toast[]): Node[] {
 
 /** A modal sheet with a head, a body and a Close button. */
 export function sheet(id: string, head: string, size: "sm" | "md" | "lg" | "full", body: (Node | null)[], onClose: () => void, extra: (Node | null)[] = []): Node {
-  return h("overlay", { key: id, anchor: "center", modal: true, size, head, role: `omp.overlay.${id}` }, [
-    ...body,
-    h("row", { key: "actions", role: "omp.actions", gap: "sm", align: "center" }, [h("spacer", { key: "fill", grow: 1 }), ...extra, actionButton("Close", "close", ["escape"], onClose)]),
-  ]);
+  // The actions ride in the overlay's footer so a long body scrolls under them.
+  const foot = h("row", { role: "omp.actions", gap: "sm", align: "center" }, [h("spacer", { key: "fill", grow: 1 }), ...extra, actionButton("Close", "close", ["escape"], onClose)]);
+  return h("overlay", { key: id, anchor: "center", modal: true, size, head, role: `omp.overlay.${id}`, foot }, body);
 }
 
 export interface PrefsRow {

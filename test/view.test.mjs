@@ -6,7 +6,7 @@ import { nativeEligible } from "../dist/launcher.js";
 import { Conversation } from "../dist/model.js";
 import { Picker } from "../dist/picker.js";
 import { dock, EDITOR_ID } from "../dist/view/dock.js";
-import { approvalPanel, completionPopup, fieldInputId, fieldDialog, pickerNode } from "../dist/view/overlays.js";
+import { approvalPanel, completionPopup, fieldInputId, fieldDialog, pickerNode, sheet } from "../dist/view/overlays.js";
 import { diffHunks } from "../dist/view/tools.js";
 import { TranscriptView } from "../dist/view/transcript.js";
 import { h } from "../dist/view/h.js";
@@ -398,4 +398,13 @@ test("a traced run shows what happened on each line, and replays step by step", 
   assert.deepEqual(mid.rows.map(row => [row.state, row.active]), [["ok", false], ["running", true], ["pending", false], ["pending", false]]);
   assert.deepEqual([mid.preferences.cursor, mid.running, mid.timeline.cursor], [2, true, 2]);
   assert.deepEqual(at(0).rows.map(row => row.state), ["running", "pending", "pending", "pending"]);
+});
+
+test("a sheet keeps its buttons in the overlay's footer, clear of a long body", () => {
+  const body = Array.from({ length: 200 }, (_, i) => h("text", { key: `l${i}`, text: `line ${i}` }));
+  const ops = View.from({ layer: h("col", { key: "layer" }) }).ops(View.from({ layer: h("col", { key: "layer" }, [sheet("agent", "Report", "lg", body, noop)]) }), "pi");
+  const wire = JSON.stringify(ops);
+  assert.match(wire, /"foot":"layer\.agent\.foot"/, "the overlay names its footer");
+  assert.match(wire, /layer\.agent\.foot\.close/, "Close is a child of the footer");
+  assert.doesNotMatch(wire, /layer\.agent\.actions/);
 });
