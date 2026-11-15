@@ -7,14 +7,39 @@
  * until it is chosen.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { homedir } from "node:os";
 
-export function defaultSessionDir() {
+export interface SessionRow {
+  id: string;
+  path: string;
+  title: string;
+  name: string;
+  cwd: string;
+  preview: string;
+  previewMessages: { role: string; text: string }[];
+  when: string;
+  mtime: number;
+  messages: number;
+  size: string;
+  current: boolean;
+}
+
+interface Head {
+  header: Record<string, any> | null;
+  title: string;
+  name: string;
+  messages: number;
+  last: string;
+  preview: string;
+  recent: { role: string; text: string }[];
+}
+
+export function defaultSessionDir(): string {
   return process.env.PI_CODING_AGENT_SESSION_DIR || join(homedir(), ".pi", "agent", "sessions");
 }
 
-function walk(dir, out, depth = 0) {
+function walk(dir: string, out: string[], depth = 0): void {
   if (depth > 4) return;
   let entries;
   try {
@@ -29,26 +54,26 @@ function walk(dir, out, depth = 0) {
   }
 }
 
-function readHead(path) {
-  let text;
+function readHead(path: string): Head | null {
+  let text: string;
   try {
-    const fd = readFileSync(path, "utf8");
-    text = fd;
+    text = readFileSync(path, "utf8");
   } catch {
     return null;
   }
   const lines = text.split("\n");
-  let header = null;
+  let header: Record<string, any> | null = null;
   let title = "";
+  let name = "";
   let messages = 0;
   let last = "";
   let preview = "";
-  const recent = [];
+  const recent: { role: string; text: string }[] = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    let record;
+    let record: Record<string, any>;
     try {
-      record = JSON.parse(line);
+      record = JSON.parse(line) as Record<string, any>;
     } catch {
       continue;
     }
@@ -56,13 +81,14 @@ function readHead(path) {
       header = record;
       continue;
     }
+    if (record.type === "session_info" && typeof record.name === "string") name = record.name;
     if (record.type === "message" && record.message) {
       const role = record.message.role;
       if (role === "user" || role === "assistant") messages += 1;
       const content = record.message.content;
       const text = typeof content === "string"
         ? content
-        : (content || []).filter((block) => block.type === "text").map((block) => block.text).join(" ");
+        : (Array.isArray(content) ? content : []).filter((block: any) => block?.type === "text").map((block: any) => block.text).join(" ");
       if (role === "user" && !title) {
         title = String(text || "").replace(/\s+/g, " ").slice(0, 90);
       }
@@ -75,10 +101,10 @@ function readHead(path) {
     }
   }
   if (!header && messages === 0) return null;
-  return { header, title, messages, last, preview, recent };
+  return { header, title, name, messages, last, preview, recent };
 }
 
-function relative(iso) {
+export function relative(iso: string): string {
   if (!iso) return "";
   const then = new Date(iso).getTime();
   if (!Number.isFinite(then)) return "";
@@ -89,17 +115,17 @@ function relative(iso) {
   return `${Math.round(diff / 86_400_000)}d ago`;
 }
 
-function bytes(size) {
+function bytes(size: number): string {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export async function listSessions(sessionDir, cwd, limit = 40) {
+export function listSessions(sessionDir: string | undefined, cwd: string, limit = 200): SessionRow[] {
   const dir = sessionDir || defaultSessionDir();
-  const files = [];
+  const files: string[] = [];
   walk(dir, files);
-  const rows = [];
+  const rows: SessionRow[] = [];
   for (const path of files) {
     let stat;
     try {
@@ -109,11 +135,12 @@ export async function listSessions(sessionDir, cwd, limit = 40) {
     }
     const head = readHead(path);
     if (!head) continue;
-    const id = head.header?.id || path.split("/").pop().replace(/\.jsonl$/, "");
+    const id = String(head.header?.id || basename(path).replace(/\.jsonl$/, ""));
     rows.push({
       id,
       path,
       title: head.title,
+      name: head.name,
       cwd: head.header?.cwd || "",
       preview: head.preview || "",
       previewMessages: head.recent || [],
@@ -129,9 +156,9 @@ export async function listSessions(sessionDir, cwd, limit = 40) {
   // resume is never impossible because the cwd changed.
   const mine = rows.filter((row) => row.cwd === cwd);
   const rest = rows.filter((row) => row.cwd !== cwd);
-  return [...mine, ...rest].slice(0, limit).map((row, index) => ({ ...row, current: index === 0 && row.cwd === cwd }));
+  return [...mine, ...rest].slice(0, limit);
 }
 
-export function sessionPath(dir, id) {
+export function sessionPath(dir: string, id: string): string {
   return join(dir, `${id}.jsonl`);
 }

@@ -3,6 +3,139 @@
 All notable changes to pi-tsp are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-11-15
+
+A rewrite in TypeScript on Tern's SDK (`@stencil-hq/tern`), drawn with Tern's
+native components the way omp's surface is.
+
+### Changed
+
+- The surface is `inline`, like a terminal program's output, instead of a
+  separate screen. The transcript is the pane's scrollback.
+- The look comes from Tern: the composer, tool rows, pickers, settings window
+  and approval panel are Tern's own components. pi-tsp's stylesheet is gone.
+- The status strip under the composer is gone. Its facts (session name, plan
+  mode, extension status text) sit inside the composer bar.
+- The package ships compiled `dist/`; `npm install` from git builds it.
+  Node 22.19 or newer is still required.
+- `~/.pi-tsp` no longer gets a synthetic `-alias` copy of a single model, and
+  `theme` and `defaultThinkingLevel` are no longer forced in a new
+  `settings.json`.
+
+### Added
+
+- Settings window (`/settings`) with typed rows instead of a five-row list.
+- Model picker with search, provider scopes, capability tabs, context and
+  price columns and a detail pane. Session picker with search, a this-folder /
+  all-projects scope, preview, rename and delete.
+- Search in every picker; `/tree`, `/fork`, `/copy` and prompt history
+  (Ctrl+R) are searchable timelines with a preview.
+- Completion popup at the caret for `/` commands and `@` files, with fuzzy
+  matching over the project's files.
+- Composer editing: selection, word motions, multi-line caret movement, undo
+  and redo, kill and yank, large pastes as chips, `$EDITOR` (Ctrl+G).
+- Per-turn footer with duration, tokens and cost, and a copy button.
+- A failed request gets its own frame with Retry, Copy error and Switch model.
+  An automatic retry shows its countdown.
+- Todo HUD above the composer while work is open; each `todo` call also shows
+  its checklist where it happened.
+- `!command` output streams as it arrives, and Esc cancels the command.
+- Tool arguments stream: an edit's diff and a write's content appear as the
+  model produces them.
+- Extension `setStatus` text and `setWidget` lines are drawn. They were
+  collected and dropped before.
+- Session details sheet (`/session`) and a keyboard shortcuts sheet.
+- The approval panel shows what is being approved and the request's own
+  options, and can be answered from the keyboard.
+- Model makers' logos on the composer's model chip and in the model picker. A
+  model served through a gateway or a local endpoint shows its maker's logo.
+- `grep` results grouped per file, numbered as in the file, matches marked.
+- A token usage line under each reply (off by default; Settings › Display).
+- A failed turn's error stays pinned above the composer until dismissed or the
+  next turn.
+- Application shortcuts follow pi's `keybindings.json` (`app.model.select`,
+  `app.tools.expand`, …), read from `~/.pi-tsp/agent/` and then `~/.pi/agent/`.
+- Display settings persist in `~/.pi-tsp/display.json`.
+- A tool call waiting on an approval says so instead of showing as running.
+- `/context`: what fills the context window, with an estimated split by kind
+  and a Compact button. The composer's meter opens it.
+- `/login` and `/logout` hand the pane to pi's own sign-in and return.
+- A frame Tern rejects is followed by a full redraw, so the view cannot stay
+  out of step with what Tern holds.
+- Vim keys in the composer (Settings › Display): Normal, Insert, Visual and
+  Visual-line modes, counts, motions, the `d` `c` `y` operators, `iw`/`aw`.
+- `/rewind`: a page replaying the transcript with the chosen message marked
+  and what follows it dimmed; Enter forks from there.
+- The bash tool's command is drawn in Tern's command pane: the script as
+  commands, flags, strings and operators, and a script handed to an
+  interpreter shown as that language.
+- Bash calls are traced: each line shows whether it ran, failed or was never
+  reached, how long it took and how many times. `/inspect` (or Inspect in the
+  pane's menu) opens the run in an inspector that replays it step by step.
+  A bundled extension adds a one-line prelude to the call that turns on
+  bash's own tracing into a private file; only line numbers and times are
+  kept, never the expanded text. A command that uses `set -x` or `PS4`
+  itself is left alone. `/trace` turns it off.
+- `$EDITOR` and `/login` hand the whole pane over and take it back with the
+  transcript intact.
+- A table of numbers in a reply is followed by a bar chart of it, drawn in
+  the theme's colours (Settings › Display to turn it off).
+- `/skill:name` prompts show the skill as a chip with its text folded away
+  instead of the whole expanded prompt.
+- Compact tool calls (Settings › Display): each call one line, runs of them
+  closed up.
+- A run that ends with todos still open leaves a reminder of them.
+- Background subagents still running show as a pill above the composer; a
+  click lists them.
+- `/context` is worked out from pi's own counts for each request: what the
+  model wrote, and by subtraction what each tool result and message added.
+  Only the first request, which holds the system prompt, the tool schemas
+  and your first message in one number, is split by an estimate.
+- A `!` draft shows a bash chip in place of its sigil and highlights as bash.
+- Editor keys follow `keybindings.json` too (`tui.editor.*`, `tui.input.*`).
+- In a Tern pane the surface opens and draws before Tern's `hello` reply
+  arrives. A mid-draft keystroke goes out as a `splice` of the changed range.
+- A lost frame acknowledgement no longer stalls the surface: after five
+  seconds it draws on.
+- `/outline`: the transcript's landmarks (your messages, tool calls, failures);
+  Enter scrolls to one.
+- Images a model returns are drawn in its reply. A reply from a different model
+  than the one before it is marked.
+- The transcript is reconciled block by block: a frame costs what changed, not
+  the session's length. With 10,000 rows a streamed word takes about 2 ms to
+  build and diff (it was about 50 ms through a whole-view diff).
+
+### Fixed
+
+- Ctrl+C no longer discards the rest of its input chunk, which could drop
+  Tern's acknowledgements and freeze the surface.
+- "Always this session" answered "Allow once". Every option now returns
+  itself, for any extension's `select`.
+- Reordered or reparented nodes, large and non-ASCII frames, split escape
+  sequences and chunked inbound messages are handled by the SDK's reconciler
+  and codec instead of hand-written ones that got each of them wrong.
+- Two read groups in one transcript no longer share node ids.
+- A tool call with no result in a resumed session no longer spins forever.
+- A failed edit shows its error instead of a diff of the attempt.
+- A request that is retried automatically leaves one error in the transcript,
+  the final one, instead of one per attempt.
+- Escape in a picker with a delete confirmation armed no longer resumes the
+  session; Enter while armed confirms the delete.
+- Keys typed while pi starts are kept and delivered, instead of crashing the
+  surface when they included Enter.
+- The `undo` and `send` events advertised in `hello` are honoured: a blank
+  `send` is a no-op and a displaced draft is kept for recall.
+- Collapsing a block by hand is remembered instead of reset on the next frame.
+
+### Removed
+
+- `/trust`, `/search`, `/todos`, `/import`, `/scoped-models`, `/reload` and
+  `/changelog`. `/search` is covered by search in `/copy` and `/tree`; the rest
+  were toasts or thin wrappers.
+- Session pinning in the resume picker.
+- `PI_TSP_COMPACT`, `PI_TSP_FRAME_OPS` and `PI_TSP_FRAME_LOG`. `PI_TSP_RECORD`
+  records every message in both directions as JSONL.
+
 ## [1.1.0] - 2026-11-09
 
 ### Added

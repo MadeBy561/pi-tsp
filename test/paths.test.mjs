@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { encodeCwd, stockPath, subagentTaskDirs, toolNamesInSource, toolNamesRegisteredUnder } from "../src/paths.mjs";
+import { encodeCwd, stockPath, subagentTaskDirs, toolNamesInSource, toolNamesRegisteredUnder } from "../dist/paths.js";
 
 test("encodeCwd matches the pi-subagents scratch-dir key", () => {
   assert.equal(encodeCwd("/Users/jg/Code/pi-tsp"), "Users-jg-Code-pi-tsp");
