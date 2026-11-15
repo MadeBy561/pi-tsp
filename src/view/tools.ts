@@ -141,32 +141,43 @@ function runFoot(item: Item, running: boolean): Node {
   ]);
 }
 
+/**
+ * A shell script in Tern's command pane. With a trace of the run (from the
+ * bundled trace extension) each line shows what happened on it, and the
+ * inspector steps through the run.
+ */
+export function commandPane(item: Item, script: string, role: string, ctx: ViewCtx, inspector: boolean): Node {
+  const running = item.status === "running" || item.status === "pending";
+  const use = (value: unknown): void => ctx.on.shell(item.id, String(value ?? ""));
+  return h("shell", {
+    key: "input",
+    role: `${role}.command`,
+    lang: "bash",
+    presentation: shellPresentation(
+      script,
+      { running, failed: item.status === "error", ...(!running && item.durationMs != null ? { took: duration(item.durationMs), tookMs: item.durationMs } : {}) },
+      ctx.shell.get(item.id) ?? { view: "pseudo", color: true },
+      item.details?.trace,
+    ),
+    replayEpoch: ctx.shell.get(item.id)?.cursor ?? 0,
+    liveOrigin: running,
+    ...(inspector ? { inspector: true } : { preview: { lines: 6 } }),
+    onAction: { "shell-viz": (event: ActionEvent) => use(event.value) },
+    onChange: (event: ChangeEvent) => use(event.item === "view" || event.item === "layer" || event.item === "seek" || event.item === "speed" ? `${event.item}:${String(event.value)}` : event.item === "cursor" ? `seek:${String(event.value)}` : event.item),
+    onSelect: () => undefined,
+  });
+}
+
 /** The run box of a shell command: the command, its output, the foot. */
 export function runBox(item: Item, command: string, lang: string, role: string, showInput: boolean, ctx: ViewCtx): Node {
   const running = item.status === "running" || item.status === "pending";
   const output = item.output ? tail(item.output.replace(/\s+$/, "")) : "";
   const script = command.trimEnd();
   // Tern's command pane where there is one and the script is a shell's; highlighted code otherwise.
-  const pane = lang === "bash" && ctx.kinds.has("shell");
-  const use = (value: unknown): void => ctx.on.shell(item.id, String(value ?? ""));
   const input = !showInput
     ? null
-    : pane
-      ? h("shell", {
-          key: "input",
-          role: `${role}.command`,
-          lang: "bash",
-          presentation: shellPresentation(
-            script,
-            { running, failed: item.status === "error", ...(!running && item.durationMs != null ? { took: duration(item.durationMs) } : {}) },
-            ctx.shell.get(item.id) ?? { view: "pseudo", color: true },
-          ),
-          replayEpoch: 0,
-          liveOrigin: running,
-          preview: { lines: 6 },
-          onAction: { "shell-viz": (event: ActionEvent) => use(event.value) },
-          onChange: (event: ChangeEvent) => use(event.item === "view" || event.item === "layer" ? `${event.item}:${String(event.value)}` : event.item),
-        })
+    : lang === "bash" && ctx.kinds.has("shell")
+      ? commandPane(item, script, role, ctx, false)
       : h("code", { key: "input", role: `${role}.command`, lang, wrap: true, preview: { lines: 6 }, text: script });
   return h("col", { key: "run", role: "omp.run", gap: "none", ...(item.status === "error" ? { tone: "error" } : {}) }, [
     input,

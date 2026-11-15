@@ -372,3 +372,27 @@ test("background subagents still running show as a pill above the composer", () 
   conv.onEvent({ type: "message_end", message: { role: "custom", customType: "subagent-notification", content: "done", details: { id: "a-1", status: "completed" } } });
   assert.equal(nodes().has("dock.hud"), false);
 });
+
+test("the trace extension keeps line numbers and times, never the expanded text", async () => {
+  const { parseTrace } = await import("../ext/trace.ts");
+  const raw = "+\t100.000000\t2\techo hi\n+\t100.010000\t3\texport TOKEN=sk-secret\n++\t100.020500\t4\tdate +%s\nnoise\n+\t100.030000\t4\tx=1";
+  const { steps, trimmed } = parseTrace(raw);
+  assert.deepEqual(steps, [{ line: 1, at: 0, depth: 1 }, { line: 2, at: 10, depth: 1 }, { line: 3, at: 20.5, depth: 2 }, { line: 3, at: 30, depth: 1 }]);
+  assert.equal(trimmed, false);
+  assert.equal(JSON.stringify(steps).includes("secret"), false);
+});
+
+test("a traced run shows what happened on each line, and replays step by step", async () => {
+  const { shellPresentation } = await import("../dist/shell.js");
+  const script = "echo hi\nfor i in 1 2; do sleep 1; done\nfalse\necho never";
+  const trace = { steps: [{ line: 1, at: 0, depth: 1 }, { line: 2, at: 5, depth: 1 }, { line: 2, at: 1005, depth: 1 }, { line: 3, at: 2005, depth: 1 }] };
+  const at = cursor => shellPresentation(script, { running: false, failed: true, tookMs: 2010 }, { view: "pseudo", color: true, ...(cursor === undefined ? {} : { cursor }) }, trace);
+  const done = at(undefined);
+  assert.deepEqual(done.rows.map(row => [row.state, row.meta]), [["ok", "5ms"], ["ok", "2.0s ×2"], ["fail", "5ms"], ["skipped", undefined]]);
+  assert.deepEqual(done.timeline, { length: 4, cursor: 4, elapsedNs: 2010e6, durationNs: 2010e6 });
+  assert.equal(done.preferences.cursor, undefined);
+  const mid = at(2);
+  assert.deepEqual(mid.rows.map(row => [row.state, row.active]), [["ok", false], ["running", true], ["pending", false], ["pending", false]]);
+  assert.deepEqual([mid.preferences.cursor, mid.running, mid.timeline.cursor], [2, true, 2]);
+  assert.deepEqual(at(0).rows.map(row => row.state), ["running", "pending", "pending", "pending"]);
+});

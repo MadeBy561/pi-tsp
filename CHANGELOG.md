@@ -67,8 +67,14 @@ native components the way omp's surface is.
 - `/rewind`: a page replaying the transcript with the chosen message marked
   and what follows it dimmed; Enter forks from there.
 - The bash tool's command is drawn in Tern's command pane: the script as
-  commands, flags, strings and operators, a script handed to an interpreter
-  shown as that language, and how long it ran.
+  commands, flags, strings and operators, and a script handed to an
+  interpreter shown as that language.
+- Bash calls are traced: each line shows whether it ran, failed or was never
+  reached, how long it took and how many times. `/inspect` (or Inspect in the
+  pane's menu) opens the run in an inspector that replays it step by step.
+  A bundled extension adds a one-line prelude to the call that turns on
+  bash's own tracing into a private file; only line numbers and times are
+  kept, never the expanded text. `/trace` turns it off.
 - `$EDITOR` and `/login` hand the whole pane over and take it back with the
   transcript intact.
 - A table of numbers in a reply is followed by a bar chart of it, drawn in

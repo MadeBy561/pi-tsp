@@ -57,7 +57,7 @@ behaves like the rest of Tern.
 | Area | What you get |
 |---|---|
 | Transcript | Markdown answers that stream, collapsible thinking with its duration, a per-turn footer (time, tokens, cost, copy), a frame for failed requests with Retry, compaction and branch summaries, extension messages, bar charts after tables of numbers, skill prompts as chips |
-| Tools | `bash` with live output and a run footer, `edit` as a diff that streams with the model's arguments, `write`, `read` (consecutive reads grouped), `grep` / `find` / `ls` with counts, `todo` as a checklist, any other tool with its arguments and JSON or text result |
+| Tools | `bash` in Tern's command pane with live output, per-line results and a step-by-step replay, `edit` as a diff that streams with the model's arguments, `write`, `read` (consecutive reads grouped), `grep` / `find` / `ls` with counts, `todo` as a checklist, any other tool with its arguments and JSON or text result |
 | Subagents | `pi-subagents` and `@tintinweb/pi-subagents` runs as agent rows with model, tool count, tokens and time; a transcript sheet for each |
 | Composer | Selection, undo and redo, word and line motions, optional Vim keys, large pastes as chips, image paste and `/attach`, `$EDITOR` with Ctrl+G, prompt history with search |
 | Completion | A popup at the caret for `/` commands (pi-tsp's and pi's) and `@` files with fuzzy matching |
@@ -115,8 +115,8 @@ asked.
 
 pi itself is not patched. Four small pi extensions ship in `ext/` and load into
 the RPC child: an approval gate for risky tool calls (`/permissions` toggles
-it), a plan mode (`/plan`, `/implement`), a `todo` tool, and tree navigation
-for `/tree`.
+it), a plan mode (`/plan`, `/implement`), a `todo` tool, tree navigation for
+`/tree`, and a tracer for bash calls (`/trace` toggles it).
 
 ## Install
 
@@ -236,8 +236,10 @@ PI_TSP_RECORD=/tmp/pi-tsp.jsonl pi-tsp
   have no counterpart here.
 - The look depends on the `omp.*` roles Tern styles. If Tern renames them,
   pi-tsp keeps working but loses that styling until it follows.
-- The command pane shows the script and its outcome. omp's also replays the
-  run step by step, from a trace only its own shell produces.
+- Step-by-step replay of a bash call comes from bash's own tracing, switched
+  on by a prelude a bundled extension adds to the call. It needs bash 5; in
+  any other shell the prelude does nothing and the pane shows the script and
+  its outcome. `/trace` turns the tracing off.
 - Signing in is pi's own flow: `/login` hands the pane to pi for it and takes
   it back when pi exits. pi's RPC mode has no login to draw natively.
 - In `/context` the total and what the model wrote are pi's own counts. How

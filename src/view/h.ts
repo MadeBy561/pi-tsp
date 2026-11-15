@@ -5,6 +5,7 @@
 import { node, span, type Node, type Span } from "@stencil-hq/tern";
 import { homedir } from "node:os";
 import type { Item } from "../model.js";
+import type { ShellPrefs } from "../shell.js";
 
 export { node as h, span as s };
 export type { Node, Span };
@@ -23,7 +24,7 @@ export interface Actions {
   pickModel(): void;
   openAgent(item: Item): void;
   open(path: string): void;
-  /** A control of a command pane was used: `view:raw`, `view:pseudo`, `layer:color`. */
+  /** A control of a command pane was used: `view:raw`, `layer:color`, `inspect`, `play`, `step`, `seek:3`, … */
   shell(id: string, value: string): void;
 }
 
@@ -44,7 +45,7 @@ export interface ViewCtx {
   /** An approval is open: the tool call that is running is waiting on it. */
   awaitingApproval: boolean;
   /** How each command pane is shown, by item id; absent is the default. */
-  shell: ReadonlyMap<string, { view: "raw" | "pseudo"; color: boolean }>;
+  shell: ReadonlyMap<string, ShellPrefs>;
   /** Per-node fold state the user set, by item id. */
   fold: ReadonlyMap<string, boolean>;
   /** Bumped when `fold`, `expandAll`, `hideThinking` or `showImages` change. */

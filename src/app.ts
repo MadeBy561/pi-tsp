@@ -21,6 +21,7 @@ import { Picker, type PickerOptions } from "./picker.js";
 import { providerIcon } from "./provider.js";
 import { BlockRegion } from "./region.js";
 import { PiRpc } from "./rpc.js";
+import type { ShellPrefs } from "./shell.js";
 import { installSplice } from "./splice.js";
 import { Vim } from "./vim.js";
 import { listSessions, type SessionRow } from "./sessions.js";
@@ -28,6 +29,7 @@ import { configDir, piTspHome, sessionDir } from "./setup.js";
 import { dock, EDITOR_ID, errorBanner, rewindPanel, type Attachment, type DockActions, type DockState } from "./view/dock.js";
 import { clock, duration, firstLine, h, money, s, showPath, tokens, type EditEvent, type Node, type ViewCtx } from "./view/h.js";
 import { approvalPanel, completionPopup, fieldDialog, fieldInputId, pickerNode, prefsNode, sheet, toastNodes, type Completion, type PickerItem, type PrefsRow, type Toast } from "./view/overlays.js";
+import { commandPane } from "./view/tools.js";
 import { planNode, TIPS, TranscriptView, welcome } from "./view/transcript.js";
 
 export const VERSION: string = (() => {
@@ -164,7 +166,10 @@ export class App {
   #visible = true;
   // Display state.
   #fold = new Map<string, boolean>();
-  #shellPrefs = new Map<string, { view: "raw" | "pseudo"; color: boolean }>();
+  #shellPrefs = new Map<string, ShellPrefs>();
+  #replayTimer: NodeJS.Timeout | null = null;
+  /** The item whose command pane is open in the inspector sheet. */
+  #inspecting = "";
   #foldRev = 0;
   #expandAll = false;
   #hideThinking = false;
@@ -239,7 +244,7 @@ export class App {
 
   #extensionPaths(): string[] {
     const root = join(dirname(fileURLToPath(import.meta.url)), "..", "ext");
-    const ours = ["permissions.ts", "plan.ts", "todo.ts", "tree.ts"].map(name => join(root, name)).filter(path => existsSync(path));
+    const ours = ["permissions.ts", "plan.ts", "todo.ts", "tree.ts", "trace.ts"].map(name => join(root, name)).filter(path => existsSync(path));
     // pi treats a duplicate tool name as an extension load error that ends the
     // session, so an extension of ours steps aside when the user's config
     // already registers one of its tools.
@@ -364,6 +369,7 @@ export class App {
     if (this.#stopping) return;
     this.#stopping = true;
     if (this.#tick) clearInterval(this.#tick);
+    if (this.#replayTimer) clearInterval(this.#replayTimer);
     if (this.#renderTimer) clearTimeout(this.#renderTimer);
     this.#saveHistory();
     for (const approval of this.#approvals) clearTimeout(approval.timer);
@@ -605,17 +611,110 @@ export class App {
         pickModel: () => this.#pickModel(),
         openAgent: item => this.#openAgent(item),
         open: () => undefined,
-        shell: (id, value) => {
-          const prefs = { ...(this.#shellPrefs.get(id) ?? { view: "pseudo" as const, color: true }) };
-          if (value === "view:raw" || value === "view:pseudo") prefs.view = value.slice(5) as "raw" | "pseudo";
-          else if (value === "layer:color") prefs.color = !prefs.color;
-          else return;
-          this.#shellPrefs.set(id, prefs);
-          this.#foldRev += 1;
-          this.schedule();
-        },
+        shell: (id, value) => this.#shellControl(id, value),
       },
     };
+  }
+
+  /**
+   * A control of a command pane: how it is shown, and the replay of its run.
+   * Replay moves a cursor through the trace's steps, one per 80 ms when
+   * playing, and the pane is redrawn as the run stood at that step.
+   */
+  #shellControl(id: string, value: string): void {
+    const item = this.conv.items.find(entry => entry.id === id);
+    const steps: number = item?.details?.trace?.steps?.length ?? 0;
+    const prefs: ShellPrefs = { ...(this.#shellPrefs.get(id) ?? { view: "pseudo", color: true }) };
+    const [verb, arg] = value.split(":");
+    switch (verb) {
+      case "view":
+        if (arg === "raw" || arg === "pseudo") prefs.view = arg;
+        break;
+      case "layer":
+        if (arg === "color") prefs.color = !prefs.color;
+        break;
+      case "inspect":
+        if (item) this.#inspectShell(item);
+        return;
+      case "play":
+        if (!steps) return;
+        if (prefs.cursor === undefined || prefs.cursor >= steps) prefs.cursor = 0;
+        prefs.playing = true;
+        break;
+      case "pause":
+        prefs.playing = false;
+        break;
+      case "step":
+        prefs.playing = false;
+        prefs.cursor = Math.min(steps, (prefs.cursor ?? 0) + 1);
+        break;
+      case "reset":
+        prefs.playing = false;
+        prefs.cursor = 0;
+        break;
+      case "live":
+        prefs.playing = false;
+        delete prefs.cursor;
+        break;
+      case "seek":
+        prefs.playing = false;
+        prefs.cursor = Math.max(0, Math.min(steps, Number(arg) || 0));
+        break;
+      case "speed":
+        prefs.speed = Math.max(0.25, Math.min(8, Number(arg) || 1));
+        break;
+      default:
+        return;
+    }
+    this.#shellPrefs.set(id, prefs);
+    this.#foldRev += 1;
+    const playing = [...this.#shellPrefs.values()].some(entry => entry.playing);
+    if (playing && !this.#replayTimer) this.#replayTimer = setInterval(() => this.#replayTick(), 80);
+    this.schedule();
+  }
+
+  #replayTick(): void {
+    let playing = false;
+    for (const [id, prefs] of this.#shellPrefs) {
+      if (!prefs.playing) continue;
+      const steps: number = this.conv.items.find(entry => entry.id === id)?.details?.trace?.steps?.length ?? 0;
+      const next = (prefs.cursor ?? 0) + Math.max(1, Math.round(prefs.speed ?? 1));
+      // At the end the pane goes back to showing the finished run.
+      if (next >= steps) this.#shellPrefs.set(id, { ...prefs, playing: false, cursor: steps });
+      else {
+        this.#shellPrefs.set(id, { ...prefs, cursor: next });
+        playing = true;
+      }
+    }
+    if (!playing && this.#replayTimer) {
+      clearInterval(this.#replayTimer);
+      this.#replayTimer = null;
+    }
+    this.#foldRev += 1;
+    this.schedule();
+  }
+
+  #inspectLast(): void {
+    const last = this.conv.items.findLast(item => (item.kind === "tool" && String(item.name).toLowerCase() === "bash") || item.kind === "bash");
+    if (last) this.#inspectShell(last);
+    else this.toast("No shell command in this session yet", "warning");
+  }
+
+  /** The command pane on a sheet of its own, with the replay controls. */
+  #inspectShell(item: Item): void {
+    const script = String(item.kind === "tool" ? (item.args?.command ?? "") : item.text).trimEnd();
+    this.#inspecting = item.id;
+    this.#sheet = {
+      id: "shell",
+      head: firstLine(script, 80) || "Command",
+      size: "lg",
+      body: () => [
+        commandPane(item, script, "omp.tool.bash", this.#viewCtx(), true),
+        item.output ? h("ansi", { key: "output", role: "omp.tool.bash.output", text: item.output.slice(-200_000), preview: { lines: 16 } }) : null,
+        !item.details?.trace ? h("text", { key: "note", wrap: "word", spans: [s("This run was not traced, so there are no steps to replay. /trace turns tracing on.", "muted")] }) : null,
+      ],
+    };
+    this.schedule();
   }
 
   #activity(): string {
@@ -1233,6 +1332,7 @@ export class App {
       { name: "rewind", description: "Rewind the conversation to an earlier message", icon: "rewind", run: () => this.#rewindTo() },
       { name: "fork", description: "Start a new session from an earlier message", icon: "fork", run: () => this.#pickFork() },
       { name: "clone", description: "Copy this session into a new one", icon: "copy", run: () => this.#clone() },
+      { name: "inspect", description: "Open the last shell command in the inspector and replay its run", icon: "terminal", run: () => this.#inspectLast() },
       { name: "outline", description: "Jump to a message or tool call in the transcript", icon: "list", run: () => this.#pickOutline() },
       { name: "copy", description: "Copy a message from this session", icon: "copy", run: () => this.#pickCopy() },
       { name: "name", description: "Name this session", icon: "edit", value: () => this.conv.sessionName, run: args => this.#rename(args) },
@@ -2298,6 +2398,13 @@ export class App {
 
   #sheetKey(key: Key): void {
     if (key.name === "escape" || key.name === "enter" || key.name === "q") return this.#closeSheet();
+    if (this.#sheet?.id === "shell") {
+      // The inspector: Space plays or pauses, the arrows step, Home starts over.
+      const id = this.#inspecting;
+      const control = ({ space: this.#shellPrefs.get(id)?.playing ? "pause" : "play", right: "step", home: "reset", end: "live" } as Record<string, string>)[key.name];
+      if (control) return this.#shellControl(id, control);
+      if (key.name === "left") return this.#shellControl(id, `seek:${Math.max(0, (this.#shellPrefs.get(id)?.cursor ?? 0) - 1)}`);
+    }
     if (!this.#session.caps.features.includes("scroll") || !this.#sheet) return;
     const id = `layer.${this.#sheet.id}`;
     const by = ({ up: "line-up", down: "line-down", page_up: "page-up", page_down: "page-down", home: "start", end: "end", space: "page-down" } as const)[key.name as "up"];

@@ -13,6 +13,16 @@ export type ShellView = "raw" | "pseudo";
 export interface ShellPrefs {
   view: ShellView;
   color: boolean;
+  /** How many steps of the trace are applied; absent shows the finished run. */
+  cursor?: number;
+  playing?: boolean;
+  speed?: number;
+}
+
+/** Which lines ran, in order, as the bundled trace extension records them. */
+export interface ShellTrace {
+  steps: { line: number; at: number; depth: number }[];
+  trimmed?: boolean;
 }
 
 interface Segment {
@@ -116,16 +126,50 @@ export interface ShellRun {
   failed: boolean;
   /** `0.4s`, shown at the row's end once the run is over. */
   took?: string;
+  /** The whole run in milliseconds, to time the last step. */
+  tookMs?: number;
 }
 
-/** The presentation of `script` for a `shell` node. */
-export function shellPresentation(script: string, run: ShellRun, prefs: ShellPrefs): Record<string, unknown> {
+const stepTime = (ms: number): string => (ms < 1 ? "<1ms" : ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`);
+
+/**
+ * The presentation of `script` for a `shell` node. With a `trace` each row
+ * carries what happened on its line (ran, failed, never reached, how long,
+ * how many times), up to the replay cursor; without one the whole script is
+ * marked with how the run ended.
+ */
+export function shellPresentation(script: string, run: ShellRun, prefs: ShellPrefs, trace?: ShellTrace): Record<string, unknown> {
   const state = run.running ? "running" : run.failed ? "fail" : "ok";
+  const steps = run.running ? [] : (trace?.steps ?? []);
+  const cursor = Math.max(0, Math.min(prefs.cursor ?? steps.length, steps.length));
+  const total = Math.max(run.tookMs ?? 0, steps.at(-1)?.at ?? 0);
+  /** What the trace says of line `line` (1-based) at the cursor. */
+  const lineState = (line: number): { state: string; active: boolean; meta?: string; seq?: number; at?: number } | null => {
+    if (!steps.length) return null;
+    let spent = 0;
+    let runs = 0;
+    let last = -1;
+    for (let index = 0; index < cursor; index += 1) {
+      if (steps[index]!.line !== line) continue;
+      runs += 1;
+      last = index;
+      spent += (steps[index + 1]?.at ?? total) - steps[index]!.at;
+    }
+    if (cursor < steps.length && steps[cursor]!.line === line) return { state: "running", active: true };
+    if (last >= 0) {
+      const failedHere = run.failed && cursor === steps.length && last === steps.length - 1;
+      return { state: failedHere ? "fail" : "ok", active: false, meta: `${stepTime(spent)}${runs > 1 ? ` ×${runs}` : ""}`, seq: last + 1, at: Math.round(steps[last]!.at * 1e6) };
+    }
+    // Not reached yet while replaying; never reached once the run is over.
+    return { state: cursor < steps.length || steps.some(step => step.line === line) ? "pending" : "skipped", active: false };
+  };
   const rows: Row[] = [];
   let offset = 0;
   let node = 0;
   const lines = script.split("\n");
   lines.forEach((line, index) => {
+    const traced = line.trim() ? lineState(index + 1) : null;
+    const rowState = traced?.state ?? state;
     const tokens = tokenize(line, offset);
     const segments: Segment[] = [];
     const effects: Row["effects"] = [];
@@ -166,7 +210,8 @@ export function shellPresentation(script: string, run: ShellRun, prefs: ShellPre
         armed = Boolean(embed && token.text === embed.flag);
       } else if (/^\d+$/.test(token.text)) style = "num";
       else if (/[/.~]/.test(token.text)) style = "path";
-      segments.push({ text: token.text, ...(style && prefs.color ? { style } : style === "emb" ? { style } : {}), node: id, range, ...(token.kind === "space" || run.running ? {} : { state }) });
+      // The outcome belongs to the command that ran, not to each of its words.
+      segments.push({ text: token.text, ...(style && prefs.color ? { style } : style === "emb" ? { style } : {}), node: id, range, ...(traced?.active ? { active: true } : {}), ...(style === "cmd" && !run.running ? { state: rowState } : {}) });
       if (token.kind !== "space" && token.kind !== "string") armed = armed && token.text === embed?.flag;
     }
     rows.push({
@@ -174,24 +219,38 @@ export function shellPresentation(script: string, run: ShellRun, prefs: ShellPre
       depth: 0,
       node: `pi:${index + 1}:0`,
       range: [offset, offset + line.length],
-      active: run.running,
+      active: traced ? traced.active : run.running,
       role: "stmt",
-      ...(run.running ? {} : { state }),
+      ...(run.running ? {} : { state: rowState }),
       segments,
       effects: prefs.color ? effects : [],
-      ...(run.took && index === lines.length - 1 ? { meta: run.took } : {}),
+      ...(traced?.meta ? { meta: traced.meta, executionSeq: traced.seq, executedAtNs: traced.at } : !steps.length && run.took && index === lines.length - 1 ? { meta: run.took } : {}),
       detail: line,
     });
     offset += line.length + 1;
   });
   return {
-    preferences: { view: prefs.view, layers: { color: prefs.color, inline: true, idioms: true, effects: true, unwrap: true }, split: false, playing: false, speed: 1, expandedNodes: [] },
+    preferences: {
+      view: prefs.view,
+      layers: { color: prefs.color, inline: true, idioms: true, effects: true, unwrap: true },
+      split: false,
+      ...(prefs.cursor !== undefined && steps.length ? { cursor } : {}),
+      playing: Boolean(prefs.playing),
+      speed: prefs.speed ?? 1,
+      expandedNodes: [],
+    },
     rows,
     original: [],
     output: "",
-    running: run.running,
+    running: run.running || cursor < steps.length,
     executing: run.running,
     watches: [],
-    timeline: { length: 0, cursor: 0, elapsedNs: 0, durationNs: 0 },
+    timeline: {
+      length: steps.length,
+      cursor,
+      elapsedNs: Math.round((cursor ? (steps[cursor]?.at ?? total) : 0) * 1e6),
+      durationNs: Math.round(total * 1e6),
+      ...(trace?.trimmed ? { trimmed: true } : {}),
+    },
   };
 }
